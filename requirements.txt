@@ -1,0 +1,2 @@
+# Vorssaint for Linux dependencies
+PyQt6>=6.4.0

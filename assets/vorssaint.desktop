@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Vorssaint
+Comment=Modular local-first system utility tray for Linux
+Exec=vorssaint
+Icon=vorssaint
+Terminal=false
+Type=Application
+Categories=Utility;System;
+Keywords=tray;utility;vorssaint;awake;clipboard;audio;cleanurl;
+StartupNotify=false

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vorssaint-linux"
+version = "0.1.0"
+description = "Modular, local-first system tray utility for modern Linux (Wayland & X11)"
+readme = "README.md"
+authors = [{ name = "chaayyn" }]
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    "PyQt6>=6.4.0",
+]
+
+[project.scripts]
+vorssaint = "vorssaint.main:main"
+
+[tool.setuptools.packages.find]
+include = ["vorssaint*"]

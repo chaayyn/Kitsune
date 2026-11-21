@@ -3,7 +3,7 @@ Unit tests for Clean URL module.
 """
 
 import unittest
-from vorssaint.modules.clean_url.module import CleanUrlModule
+from kitsune.modules.clean_url.module import CleanUrlModule
 
 
 class DummyApp:

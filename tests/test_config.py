@@ -5,7 +5,7 @@ Unit tests for ConfigManager.
 import tempfile
 import unittest
 from pathlib import Path
-from vorssaint.core.config import ConfigManager
+from kitsune.core.config import ConfigManager
 
 
 class TestConfigManager(unittest.TestCase):

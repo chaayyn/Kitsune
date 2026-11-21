@@ -1,8 +1,8 @@
-# Vorssaint pour Linux ⚡
+# Kitsune pour Linux 🦊⚡
 
-Équivalent modulaire, léger et *local-first* de [Vorssaint](https://vorssaint.com/fr/) conçu pour les environnements de bureau Linux modernes (**Wayland** et **X11**).
+Boîte à outils modulaire, légère et *local-first* (inspirée de Vorssaint) conçue pour les environnements de bureau Linux modernes (**Wayland** et **X11**).
 
-Vorssaint réside discrètement dans la zone de notification (*system tray* / barre supérieure) et permet d'activer ou désactiver chaque module indépendamment. **Aucune télémétrie, aucune ressource consommée pour les fonctions désactivées.**
+Kitsune réside discrètement dans la zone de notification (*system tray* / barre supérieure) et permet d'activer ou désactiver chaque module indépendamment. **Aucune télémétrie, aucune ressource consommée pour les fonctions désactivées.**
 
 ---
 
@@ -30,7 +30,7 @@ Vorssaint réside discrètement dans la zone de notification (*system tray* / ba
 4. **Intégration directe aux standards Linux** :
    - D-Bus pour les inhibitions de veille et le portail de sélection de couleurs.
    - PipeWire / WirePlumber (`wpctl`) pour l'audio sans latence.
-   - Données stockées localement selon la norme XDG (`~/.config/vorssaint/` et `~/.local/share/vorssaint/`).
+   - Données stockées localement selon la norme XDG (`~/.config/kitsune/` et `~/.local/share/kitsune/`).
 
 ---
 
@@ -54,8 +54,8 @@ Outils système recommandés (généralement déjà présents par défaut) :
 
 ### Lancement direct
 ```bash
-git clone git@github.com:chaayyn/vorssaint-linux.git
-cd vorssaint-linux
+git clone git@github.com:chaayyn/kitsune-linux.git
+cd kitsune-linux
 python3 run.py
 ```
 
@@ -71,20 +71,20 @@ python3 run.py --settings
 ### Installation globale en mode éditable
 ```bash
 pip install -e .
-vorssaint
+kitsune
 ```
 
 ---
 
 ## 🧩 Comment ajouter un nouveau module
 
-Tous les modules résident dans `vorssaint/modules/<nom_du_module>/` et héritent de `BaseModule`.
+Tous les modules résident dans `kitsune/modules/<nom_du_module>/` et héritent de `BaseModule`.
 
 Exemple d'un module minimal :
 
 ```python
-# vorssaint/modules/mon_outil/module.py
-from vorssaint.core.module import BaseModule
+# kitsune/modules/mon_outil/module.py
+from kitsune.core.module import BaseModule
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMenu
 
@@ -139,7 +139,7 @@ python3 -m unittest discover tests
 ## 🔒 Confidentialité & Local-First
 
 - **Zéro télémétrie** : Aucune requête réseau sortante vers des serveurs externes.
-- **Données 100% locales** : Tout l'historique et les notes restent confinés dans votre répertoire utilisateur (`~/.config/vorssaint` et `~/.local/share/vorssaint`).
+- **Données 100% locales** : Tout l'historique et les notes restent confinés dans votre répertoire utilisateur (`~/.config/kitsune` et `~/.local/share/kitsune`).
 - **Filtrage des données sensibles** : L'historique du presse-papiers ignore automatiquement les motifs de clés privées SSH, tokens GitHub/GitLab et JWT.
 
 ---

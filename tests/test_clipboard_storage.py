@@ -5,7 +5,7 @@ Unit tests for Clipboard SQLite Storage.
 import tempfile
 import unittest
 from pathlib import Path
-from vorssaint.modules.clipboard.storage import ClipboardStorage
+from kitsune.modules.clipboard.storage import ClipboardStorage
 
 
 class TestClipboardStorage(unittest.TestCase):

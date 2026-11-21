@@ -3,7 +3,7 @@ Unit tests for Color Picker calculations and formatting.
 """
 
 import unittest
-from vorssaint.modules.color_picker.module import ColorPickerModule
+from kitsune.modules.color_picker.module import ColorPickerModule
 
 
 class DummyApp:

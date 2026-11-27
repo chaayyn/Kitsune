@@ -2,7 +2,7 @@
 
 Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-> État : étape 5. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et trois modules (Clean URL, Presse-papiers, Bloc-notes) fonctionnent.
+> État : étape 6. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et quatre modules (Clean URL, Presse-papiers, Bloc-notes, Rester éveillé) fonctionnent.
 
 ## Architecture
 
@@ -23,6 +23,7 @@ saturn (interface PySide6 + QML, aucune logique métier)
 gnome-extension/saturn@chaayyn.github.com (GNOME Shell 50+, GJS)
 ├── extension.js    bouton dans la barre du haut, nom org.saturn.Shell
 ├── indicator.js    menu ancré : modules, interrupteurs, état du démon
+├── awake.js        « Rester éveillé » en tête du menu : interrupteur et durées
 ├── clipboard.js    relais du presse-papiers sous GNOME Wayland
 └── daemon.js       client D-Bus de saturnd, ouverture des fenêtres Qt
 ```
@@ -103,6 +104,17 @@ Notes rapides en onglets, enregistrées au fil de la frappe (dans `~/.local/shar
 
 Actions : `list`, `get`, `create`, `save`, `delete`, `move`, `export`. Réglages : dossier d'export, taille du texte.
 
+### Rester éveillé
+
+Empêche la mise en veille pour 15 min, 30 min, 1 h, 2 h, 5 h ou jusqu'à nouvel ordre. Actif par défaut, mais rien n'est bloqué tant qu'on ne lance pas le mode.
+
+- **Où** : en tête du panneau Qt et du menu GNOME (grand bouton, durées, compte à rebours), et dans le menu de l'icône. Sous GNOME, l'icône de la barre passe au doré tant que le mode est actif.
+- **Comment, selon le bureau** : gestionnaire de session GNOME, sinon portail XDG (KDE, Hyprland…), sinon `org.freedesktop.ScreenSaver` pour l'écran ; ce qui reste (et le capot) passe par systemd-logind. Les inhibitions sont liées à la connexion D-Bus de `saturnd` : s'il s'arrête, même brutalement, la veille redevient normale.
+- **Réglages** : durée par défaut, garder l'écran allumé (sinon seule la veille est bloquée), ignorer la fermeture du capot, arrêt sous un seuil de batterie (UPower, 10 % par défaut), activation au démarrage de `saturnd`.
+- La fin de session suit l'horloge murale : après une mise en veille forcée, l'heure de fin reste juste. Quand le démon arrête le mode (durée écoulée, batterie), l'interface et GNOME affichent une notification.
+
+Actions : `start` (`minutes`, 0 = sans fin ; sinon la durée par défaut), `stop`, `toggle`, `status`. Évènement : `state-changed` (avec `reason` : `user`, `timer`, `battery`, `settings`, `error`).
+
 ## API D-Bus
 
 Nom `org.saturn.Daemon`, objet `/org/saturn/Daemon`, interface `org.saturn.Daemon1`.
@@ -142,7 +154,7 @@ Le contexte `self.ctx` donne les réglages, l'environnement détecté (`ctx.env`
 python3 -m pytest
 ```
 
-Les tests D-Bus lancent un vrai `saturnd` sur un bus privé (`dbus-daemon` requis) et n'écrivent jamais dans votre `~/.config`. Les tests de l'interface tournent hors écran (`QT_QPA_PLATFORM=offscreen`).
+Les tests D-Bus lancent un vrai `saturnd` sur un bus privé (`dbus-daemon` requis) et n'écrivent jamais dans votre `~/.config`. Ce bus sert aussi de bus système : « Rester éveillé » y parle à de faux GNOME, portail, logind et UPower (`tests/fake_power_services.py`), jamais aux vrais. Les tests de l'interface tournent hors écran (`QT_QPA_PLATFORM=offscreen`).
 
 ## Licence
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from gi.repository import Gio, GLib
 from PySide6.QtCore import QAbstractEventDispatcher, QTimer, QUrl
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QAction, QActionGroup, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
@@ -148,11 +148,13 @@ def build_tray(app: QApplication, backend: Backend, icon: QIcon) -> QSystemTrayI
     menu.addAction("Ouvrir Saturn", backend.showPanel)
     menu.addAction("Historique du presse-papiers", backend.openClipboard)
     menu.addAction("Bloc-notes", backend.openScratchpad)
+    awake_menu = build_awake_menu(menu, backend)
     menu.addAction("Réglages…", lambda: backend.openSettings(""))
     menu.addSeparator()
     menu.addAction("Quitter", app.quit)
     tray.setContextMenu(menu)
     tray._menu = menu  # garder une référence Python
+    tray._awake_menu = awake_menu
 
     def on_activated(reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
@@ -169,6 +171,47 @@ def build_tray(app: QApplication, backend: Backend, icon: QIcon) -> QSystemTrayI
     update_tooltip()
     tray.show()
     return tray
+
+
+#: Durées proposées par le menu « Rester éveillé » (minutes, 0 = sans fin).
+AWAKE_DURATIONS = (
+    (0, "Jusqu'à nouvel ordre"),
+    (15, "15 minutes"),
+    (30, "30 minutes"),
+    (60, "1 heure"),
+    (120, "2 heures"),
+    (300, "5 heures"),
+)
+
+
+def build_awake_menu(parent: QMenu, backend: Backend) -> QMenu:
+    """Sous-menu « Rester éveillé » : durées cochables et arrêt."""
+    menu = parent.addMenu("Rester éveillé")
+    group = QActionGroup(menu)
+    group.setExclusive(True)
+    durations: list[tuple[int, QAction]] = []
+    for minutes, text in AWAKE_DURATIONS:
+        action_ = menu.addAction(text)
+        action_.setCheckable(True)
+        group.addAction(action_)
+        action_.triggered.connect(lambda _checked=False, m=minutes: backend.startAwake(m))
+        durations.append((minutes, action_))
+    menu.addSeparator()
+    stop = menu.addAction("Arrêter", backend.stopAwake)
+
+    def sync() -> None:
+        menu.menuAction().setVisible(backend.awakeAvailable)
+        active = backend.awakeActive
+        menu.setTitle("Rester éveillé · actif" if active else "Rester éveillé")
+        stop.setEnabled(active)
+        group.setExclusive(False)  # pour pouvoir tout décocher
+        for minutes, action_ in durations:
+            action_.setChecked(active and backend.awakeSeconds == minutes * 60)
+        group.setExclusive(True)
+
+    backend.awakeChanged.connect(sync)
+    sync()
+    return menu
 
 
 def name_has_owner(connection: Gio.DBusConnection, name: str) -> bool:

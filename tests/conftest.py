@@ -210,6 +210,8 @@ def spawn_daemon(address: str, *args: str) -> subprocess.Popen[str]:
         XDG_CURRENT_DESKTOP="GNOME",
         XDG_SESSION_TYPE="wayland",
     )
+    # Bus système = bus de test, sauf si le test en fournit un : rien ne touche au vrai système.
+    env.setdefault("DBUS_SYSTEM_BUS_ADDRESS", address)
     return subprocess.Popen(
         [sys.executable, "-m", "saturn", "--verbose", *args],
         env=env,

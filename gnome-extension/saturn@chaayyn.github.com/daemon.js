@@ -42,11 +42,13 @@ export class DaemonClient {
      * @param {object} handlers
      * @param {(available: boolean) => void} handlers.onAvailableChanged
      * @param {(id: string, module: object) => void} handlers.onModuleChanged
+     * @param {(id: string, event: string, data: object) => void} [handlers.onModuleEvent]
      */
-    constructor({onAvailableChanged, onModuleChanged}) {
+    constructor({onAvailableChanged, onModuleChanged, onModuleEvent}) {
         this.available = false;
         this._onAvailableChanged = onAvailableChanged;
         this._onModuleChanged = onModuleChanged;
+        this._onModuleEvent = onModuleEvent;
 
         this._watchId = Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
             Gio.BusNameWatcherFlags.NONE,
@@ -58,6 +60,12 @@ export class DaemonClient {
             (_conn, _sender, _path, _iface, _signal, params) => {
                 const [id, module] = params.recursiveUnpack();
                 this._onModuleChanged?.(id, module);
+            });
+        this._eventId = Gio.DBus.session.signal_subscribe(BUS_NAME, INTERFACE,
+            'ModuleEvent', OBJECT_PATH, null, Gio.DBusSignalFlags.NONE,
+            (_conn, _sender, _path, _iface, _signal, params) => {
+                const [id, event, data] = params.recursiveUnpack();
+                this._onModuleEvent?.(id, event, data);
             });
     }
 
@@ -95,6 +103,17 @@ export class DaemonClient {
         return module;
     }
 
+    /**
+     * Action d'un module ; `params` contient des GLib.Variant.
+     *
+     * @returns {Promise<object>} le résultat, converti en JS
+     */
+    async callAction(moduleId, action, params = {}) {
+        const [result] = await this._call('CallAction',
+            new GLib.Variant('(ssa{sv})', [moduleId, action, params]));
+        return result;
+    }
+
     /** Le démon peut-il être lancé par activation D-Bus (fichier .service installé) ? */
     async isActivatable() {
         const [names] = await callSession('org.freedesktop.DBus', '/org/freedesktop/DBus',
@@ -122,8 +141,13 @@ export class DaemonClient {
             Gio.DBus.session.signal_unsubscribe(this._signalId);
             this._signalId = 0;
         }
+        if (this._eventId) {
+            Gio.DBus.session.signal_unsubscribe(this._eventId);
+            this._eventId = 0;
+        }
         this._onAvailableChanged = null;
         this._onModuleChanged = null;
+        this._onModuleEvent = null;
     }
 }
 

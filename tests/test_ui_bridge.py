@@ -403,3 +403,54 @@ def test_backend_scratchpad_flow(qt_app, bus, isolated_xdg) -> None:
     finally:
         assert stop_process(process) == 0, process.stderr.read()
     client.close()
+
+
+@needs_dbus
+def test_backend_keep_awake_flow(qt_app, bus, monkeypatch) -> None:
+    import subprocess
+    import sys
+
+    address, connection = bus
+    monkeypatch.setenv("DBUS_SYSTEM_BUS_ADDRESS", address)  # faux logind / UPower sur le bus de test
+    fakes = subprocess.Popen(
+        [sys.executable, str(Path(__file__).with_name("fake_power_services.py"))],
+        env=dict(os.environ, DBUS_SESSION_BUS_ADDRESS=address),
+    )
+    client = DaemonClient(connection)
+    backend = Backend(client)
+    messages: list[tuple[str, str]] = []
+    backend.notify.connect(lambda message, level: messages.append((message, level)))
+    process = None
+    try:
+        time.sleep(0.3)
+        process = spawn_daemon(address)
+        wait_for_owner(connection)
+        pump(lambda: backend.awakeAvailable)
+        assert not backend.awakeActive
+
+        backend.startAwake(15)
+        assert backend.awakeBusy
+        pump(lambda: backend.awakeActive and not backend.awakeBusy)
+        assert backend.awakeSeconds == 900 and backend.awakeDisplay
+        assert 0 < backend.awakeUntil - time.time() * 1000 <= 900_000
+
+        backend.toggleAwake()
+        pump(lambda: not backend.awakeActive)
+        backend.startAwake(-1)  # durée par défaut : sans fin
+        pump(lambda: backend.awakeActive and backend.awakeUntil == 0)
+
+        # Arrêt décidé par le démon (batterie) : état relu et message affiché.
+        connection.call_sync("org.saturn.Test", "/org/saturn/Test", "org.saturn.Test1", "SetBattery",
+                             GLib.Variant("(bd)", (True, 3.0)), None, 0, 5000, None)
+        pump(lambda: not backend.awakeActive and messages)
+        assert "Batterie" in messages[-1][0] and messages[-1][1] == "info"
+
+        backend.startAwake(0)
+        pump(lambda: len(messages) == 2)
+        assert messages[-1][1] == "error" and "Batterie trop faible" in messages[-1][0]
+    finally:
+        if process is not None:
+            assert stop_process(process) == 0, process.stderr.read()
+        stop_process(fakes)
+    pump(lambda: not backend.awakeAvailable)
+    client.close()

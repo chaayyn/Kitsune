@@ -2,6 +2,12 @@
 
 .saturn-panel-icon {
   icon-size: 16px;
+  transition-duration: 320ms;
+}
+
+/* Rester éveillé actif : l'icône passe à l'accent. */
+.saturn-panel-icon-awake {
+  color: #e8b44a;
 }
 
 .saturn-menu .popup-menu-content {
@@ -216,4 +222,83 @@
 
 .saturn-footer {
   padding: 8px 6px 2px 14px;
+}
+
+/* -- rester éveillé ------------------------------------------------------------ */
+
+.saturn-awake {
+  padding: 10px 14px 12px;
+}
+
+.saturn-awake-top {
+  spacing: 14px;
+}
+
+.saturn-awake-active .saturn-eyebrow {
+  color: #e8b44a;
+}
+
+.saturn-awake-headline {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 14pt;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: #f2efe8;
+  margin-top: 3px;
+}
+
+.saturn-awake-detail {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 8pt;
+  letter-spacing: 0.8px;
+  color: #8d8a84;
+  margin-top: 2px;
+  max-width: 270px;
+}
+
+.saturn-awake-notice {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 0;
+  color: #ff6a55;
+}
+
+.saturn-chips {
+  spacing: 6px;
+  margin-top: 12px;
+}
+
+.saturn-chip {
+  padding: 5px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: transparent;
+  transition-duration: 200ms;
+}
+
+.saturn-chip:hover,
+.saturn-chip:focus {
+  background-color: #1f1f23;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.saturn-chip:checked {
+  background-color: #e8b44a;
+  border-color: #e8b44a;
+}
+
+.saturn-chip-label {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 7.5pt;
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  color: #f2efe8;
+}
+
+.saturn-chip-infinite .saturn-chip-label {
+  font-size: 10.5pt;
+}
+
+.saturn-chip:checked .saturn-chip-label {
+  color: #0b0b0c;
 }

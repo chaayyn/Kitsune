@@ -74,6 +74,14 @@ def coerce_setting(signature: str, value: Any) -> Any:
     raise ValueError(f"Type de réglage inconnu : {signature}")
 
 
+#: Pourquoi le mode « Rester éveillé » s'est arrêté sans qu'on le demande.
+AWAKE_STOP_MESSAGES = {
+    "timer": "Durée écoulée : la mise en veille est de nouveau permise.",
+    "battery": "Batterie faible : « Rester éveillé » s'est arrêté.",
+    "error": "« Rester éveillé » s'est arrêté : plus aucun service ne bloque la veille.",
+}
+
+
 class Backend(QObject):
     connectedChanged = Signal()
     startingChanged = Signal()
@@ -89,6 +97,7 @@ class Backend(QObject):
     scratchpadStateChanged = Signal()
     noteLoaded = Signal(int, str)  # id, texte : le QML remplace le contenu de l'éditeur
     noteExported = Signal(str)
+    awakeChanged = Signal()
     notify = Signal(str, str)  # message, niveau ("error" ou "info")
 
     def __init__(self, client: DaemonClient, parent: QObject | None = None) -> None:
@@ -107,6 +116,9 @@ class Backend(QObject):
         self._saving = 0
         self._origin = f"ui-{os.getpid()}"
         self._pad_was_active = False
+        self._awake: dict[str, Any] = {}
+        self._awake_busy = False
+        self._awake_was_running = False
         self._connected = False
         self._starting = False
         self._version = ""
@@ -121,6 +133,7 @@ class Backend(QObject):
         self._modules.rowsInserted.connect(self.clipboardStateChanged)
         for signal in (self._modules.dataChanged, self._modules.modelReset, self._modules.rowsInserted):
             signal.connect(self.scratchpadStateChanged)
+            signal.connect(self.awakeChanged)
 
         client.on_available_changed = self._on_available_changed
         client.on_module_changed = self._on_module_changed
@@ -209,6 +222,37 @@ class Backend(QObject):
     @Property(bool, notify=scratchpadStateChanged)
     def noteSaving(self) -> bool:
         return self._saving > 0
+
+    @Property(bool, notify=awakeChanged)
+    def awakeAvailable(self) -> bool:
+        module = self._modules.module("keep_awake")
+        return bool(self._connected and module and module["status"] == "running")
+
+    @Property(bool, notify=awakeChanged)
+    def awakeActive(self) -> bool:
+        return self.awakeAvailable and bool(self._awake.get("active"))
+
+    @Property(float, notify=awakeChanged)
+    def awakeUntil(self) -> float:
+        """Fin de la session en millisecondes depuis l'epoch (0 = sans fin), pour ``Date`` en QML."""
+        return float(self._awake.get("until", 0.0)) * 1000
+
+    @Property(int, notify=awakeChanged)
+    def awakeSeconds(self) -> int:
+        return int(self._awake.get("seconds", 0))
+
+    @Property(bool, notify=awakeChanged)
+    def awakeDisplay(self) -> bool:
+        return bool(self._awake.get("display", False))
+
+    @Property(bool, notify=awakeChanged)
+    def awakeBusy(self) -> bool:
+        return self._awake_busy
+
+    @Property(str, notify=awakeChanged)
+    def awakeNotice(self) -> str:
+        module = self._modules.module("keep_awake") or {}
+        return str(module.get("notice") or "")
 
     @Property(bool, constant=True)
     def canPosition(self) -> bool:
@@ -370,6 +414,48 @@ class Backend(QObject):
 
         self.client.call_action("scratchpad", "get", {"id": note_id}, got, self._report)
 
+    # -- rester éveillé ------------------------------------------------------------------
+
+    @Slot(int)
+    def startAwake(self, minutes: int) -> None:
+        """Démarre (ou relance) le mode ; ``minutes`` < 0 = durée par défaut, 0 = sans fin."""
+        params = {} if minutes < 0 else {"minutes": int(minutes)}
+        self._awake_call("start", params)
+
+    @Slot()
+    def stopAwake(self) -> None:
+        self._awake_call("stop", {})
+
+    @Slot()
+    def toggleAwake(self) -> None:
+        self._awake_call("toggle", {})
+
+    def _awake_call(self, action_name: str, params: dict[str, Any]) -> None:
+        self._set_awake_busy(True)
+
+        def failed(error: CallError) -> None:
+            self._set_awake_busy(False)
+            self._report(error)
+
+        self.client.call_action("keep_awake", action_name, params, self._set_awake, failed)
+
+    def _set_awake(self, state: dict[str, Any]) -> None:
+        self._awake = dict(state)
+        self._awake_busy = False
+        self.awakeChanged.emit()
+
+    def _set_awake_busy(self, busy: bool) -> None:
+        if busy != self._awake_busy:
+            self._awake_busy = busy
+            self.awakeChanged.emit()
+
+    def _refresh_awake(self) -> None:
+        if self.awakeAvailable:
+            self.client.call_action("keep_awake", "status", {}, self._set_awake, None)
+        elif self._awake:
+            self._awake = {}
+            self.awakeChanged.emit()
+
     def _apply_pad_settings(self, values: dict[str, Any]) -> None:
         self._note_font = int(values.get("font_size", self._note_font))
         self.scratchpadStateChanged.emit()
@@ -487,6 +573,11 @@ class Backend(QObject):
             self._reload_notes()
             if int(data.get("id", -1)) == self._current_note:
                 self._load_note(self._current_note)
+        elif module_id == "keep_awake" and event == "state-changed":
+            self._set_awake(data)
+            message = AWAKE_STOP_MESSAGES.get(str(data.get("reason", "")))
+            if message:
+                self.notify.emit(message, "error" if data.get("reason") == "error" else "info")
 
     def _on_modules_changed(self, *_args: Any) -> None:
         self.currentModuleChanged.emit()
@@ -500,6 +591,10 @@ class Backend(QObject):
         if pad != self._pad_was_active:
             self._pad_was_active = pad
             self._reload_notes(select=self._current_note)
+        awake = self.awakeAvailable
+        if awake != self._awake_was_running:
+            self._awake_was_running = awake
+            self._refresh_awake()
 
     def _on_start_timeout(self) -> None:
         if not self._connected:

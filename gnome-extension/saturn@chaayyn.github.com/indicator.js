@@ -11,6 +11,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {AwakeItem, MODULE_ID as AWAKE_ID, STOP_MESSAGES} from './awake.js';
 import {ClipboardBridge} from './clipboard.js';
 import {DaemonClient, openClipboard, openScratchpad, openSettings} from './daemon.js';
 
@@ -178,6 +179,8 @@ class SaturnIndicator extends PanelMenu.Button {
         this._version = '';
         this._environment = {};
         this._startTried = false;
+        this._awakeState = {};
+        this._awakeKnown = false;
 
         const iconFile = Gio.File.new_for_path(`${extension.path}/icons/saturn-symbolic.svg`);
         this._icon = new St.Icon({
@@ -193,6 +196,7 @@ class SaturnIndicator extends PanelMenu.Button {
         this._client = new DaemonClient({
             onAvailableChanged: available => this._onAvailableChanged(available),
             onModuleChanged: (id, module) => this._upsert(module),
+            onModuleEvent: (id, event, data) => this._onModuleEvent(id, event, data),
         });
         this._sync();
 
@@ -206,7 +210,10 @@ class SaturnIndicator extends PanelMenu.Button {
             return GLib.SOURCE_REMOVE;
         });
 
+        this.connect('destroy', () => this._teardown());
+
         this.menu.connect('open-state-changed', (_menu, open) => {
+            this._awakeItem.setOpen(open);
             if (open && this._client.available)
                 this._refresh();
         });
@@ -231,6 +238,16 @@ class SaturnIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(header);
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Rester éveillé : en tête, c'est l'action la plus fréquente.
+        this._awakeItem = new AwakeItem({
+            onStart: minutes => this._awakeAction('start',
+                minutes < 0 ? {} : {minutes: new GLib.Variant('x', minutes)}),
+            onStop: () => this._awakeAction('stop'),
+        });
+        this.menu.addMenuItem(this._awakeItem);
+        this._awakeSeparator = new PopupMenu.PopupSeparatorMenuItem();
+        this.menu.addMenuItem(this._awakeSeparator);
 
         // Liste des modules.
         this._modulesSection = new PopupMenu.PopupMenuSection();
@@ -348,6 +365,59 @@ class SaturnIndicator extends PanelMenu.Button {
         }
     }
 
+    // -- rester éveillé ------------------------------------------------------------
+
+    _onModuleEvent(id, event, data) {
+        if (id !== AWAKE_ID || event !== 'state-changed')
+            return;
+        this._awakeState = data;
+        this._awakeKnown = true;
+        this._syncAwake();
+        const message = STOP_MESSAGES[data.reason];
+        if (message)
+            Main.notify('Saturn', message);
+    }
+
+    async _awakeAction(action, params = {}) {
+        try {
+            this._awakeState = await this._client.callAction(AWAKE_ID, action, params);
+            this._awakeKnown = true;
+        } catch (error) {
+            Main.notifyError('Saturn', error.message);
+        }
+        this._syncAwake();
+    }
+
+    async _fetchAwake() {
+        this._awakeKnown = true;
+        try {
+            this._awakeState = await this._client.callAction(AWAKE_ID, 'status');
+        } catch (error) {
+            this._awakeKnown = false;
+            logError(error, 'Saturn : état de « Rester éveillé » illisible');
+        }
+        this._syncAwake();
+    }
+
+    _syncAwake() {
+        const module = this._items.get(AWAKE_ID)?.module;
+        const running = (this._client?.available ?? false) && module !== undefined &&
+            moduleStatus(module) === 'running';
+        if (!running) {
+            this._awakeState = {};
+            this._awakeKnown = false;
+        } else if (!this._awakeKnown) {
+            this._fetchAwake();
+        }
+        this._awakeItem.visible = running;
+        this._awakeSeparator.visible = running;
+        this._awakeItem.update(running ? {...this._awakeState, notice: module.notice ?? ''} : {});
+        if (running && this._awakeState.active)
+            this._icon.add_style_class_name('saturn-panel-icon-awake');
+        else
+            this._icon.remove_style_class_name('saturn-panel-icon-awake');
+    }
+
     async _startDaemon(userAsked) {
         if (this._client.available || this._startTried && !userAsked)
             return;
@@ -387,9 +457,17 @@ class SaturnIndicator extends PanelMenu.Button {
         const notes = this._items.get('scratchpad')?.module;
         this._notesButton.visible = online && notes !== undefined && moduleStatus(notes) === 'running';
         this._clipboard?.setActive(clipboardOn && this._environment.session === 'wayland');
+        this._syncAwake();
     }
 
     destroy() {
+        this._teardown();
+        super.destroy();
+    }
+
+    // Aussi appelé quand GNOME Shell détruit l'indicateur sans passer par destroy()
+    // (fermeture de session) : plus aucun rappel D-Bus ne doit toucher aux widgets.
+    _teardown() {
         if (this._autoStartId) {
             GLib.source_remove(this._autoStartId);
             this._autoStartId = 0;
@@ -398,6 +476,5 @@ class SaturnIndicator extends PanelMenu.Button {
         this._clipboard = null;
         this._client?.destroy();
         this._client = null;
-        super.destroy();
     }
 });

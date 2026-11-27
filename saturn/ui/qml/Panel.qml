@@ -12,7 +12,10 @@ Window {
 
     width: 400
     // S'ajuste au contenu : en-tête + pied ≈ 200 px, puis la liste (bornée).
-    height: Math.round(Math.min(620, 200 + (Saturn.connected && list.count > 0 ? Math.max(120, list.contentHeight) : 300)))
+    // « Rester éveillé » ajoute sa carte et un séparateur au-dessus de la liste.
+    readonly property real awakeHeight: awakeCard.visible ? awakeCard.implicitHeight + 37 : 0
+    height: Math.round(Math.min(760, 200 + awakeHeight
+                                + (Saturn.connected && list.count > 0 ? Math.max(120, list.contentHeight) : 300)))
     title: "Saturn"
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
@@ -137,6 +140,23 @@ Window {
             }
 
             Rectangle {
+                Layout.fillWidth: true
+                Layout.topMargin: 18
+                Layout.preferredHeight: 1
+                color: Theme.border
+            }
+
+            // -- rester éveillé -------------------------------------------------------
+            KeepAwakeCard {
+                id: awakeCard
+                visible: Saturn.awakeAvailable
+                Layout.fillWidth: true
+                Layout.topMargin: 18
+                opacity: Math.max(0, Math.min(1, panel.reveal * 1.4 - 0.1))
+                transform: Translate { y: (1 - panel.reveal) * 6 }
+            }
+            Rectangle {
+                visible: awakeCard.visible
                 Layout.fillWidth: true
                 Layout.topMargin: 18
                 Layout.preferredHeight: 1

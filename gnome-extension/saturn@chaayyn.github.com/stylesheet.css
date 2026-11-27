@@ -79,6 +79,10 @@
 
 /* -- modules -------------------------------------------------------------- */
 
+.saturn-modules-scroll {
+  max-height: 340px;
+}
+
 .saturn-module {
   padding: 10px 14px;
   spacing: 14px;
@@ -301,4 +305,99 @@
 
 .saturn-chip:checked .saturn-chip-label {
   color: #0b0b0c;
+}
+
+/* -- mode nettoyage ------------------------------------------------------------ */
+
+.saturn-action-row {
+  padding: 10px 14px;
+  spacing: 14px;
+}
+
+.saturn-action-hint {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 7.5pt;
+  letter-spacing: 1.2px;
+  color: #5a5853;
+  margin-top: 3px;
+}
+
+.saturn-action-arrow {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 10pt;
+  color: #e8b44a;
+}
+
+.saturn-cleaning {
+  background-color: #0b0b0c;
+}
+
+.saturn-cleaning-eyebrow,
+.saturn-cleaning-hint {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 9pt;
+  letter-spacing: 2px;
+  color: #5a5853;
+  text-align: center;
+}
+
+.saturn-cleaning-eyebrow {
+  color: #e8b44a;
+}
+
+.saturn-cleaning-title {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 92pt;
+  font-weight: 600;
+  letter-spacing: -5px;
+  color: #f2efe8;
+  text-align: center;
+  margin: 18px 0 10px;
+}
+
+.saturn-cleaning-clock {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 30pt;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: #f2efe8;
+  text-align: center;
+  margin: 46px 0 40px;
+}
+
+.saturn-cleaning-exit {
+  width: 300px;
+  height: 52px;
+  border-radius: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition-duration: 200ms;
+}
+
+.saturn-cleaning-exit:hover {
+  border-color: #e8b44a;
+  background-color: #18181b;
+}
+
+.saturn-cleaning-exit:active {
+  border-color: #e8b44a;
+}
+
+/* Teinte dorée translucide : le libellé reste lisible par-dessus. */
+.saturn-cleaning-fill {
+  border-radius: 26px;
+  background-color: rgba(232, 180, 74, 0.32);
+}
+
+.saturn-cleaning-exit-label {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 8.5pt;
+  font-weight: 500;
+  letter-spacing: 1.6px;
+  color: #f2efe8;
+}
+
+
+.saturn-cleaning-bar {
+  height: 1px;
+  background-color: #e8b44a;
 }

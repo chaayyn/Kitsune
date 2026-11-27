@@ -14,7 +14,7 @@ from PySide6.QtGui import QAction, QActionGroup, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from saturn import __version__
+from saturn import BUS_NAME, INTERFACE, OBJECT_PATH, __version__
 from saturn.ui.backend import Backend
 from saturn.ui.client import DaemonClient
 from saturn.ui.theme import Theme, apply_palette, load_bundled_fonts
@@ -59,6 +59,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--clipboard", action="store_true", help="ouvrir l'historique du presse-papiers"
     )
     parser.add_argument("--scratchpad", action="store_true", help="ouvrir le bloc-notes")
+    parser.add_argument("--clean", action="store_true", help="lancer le mode nettoyage")
     parser.add_argument("-v", "--verbose", action="store_true", help="journal détaillé")
     parser.add_argument("--version", action="version", version=f"saturn {__version__}")
     return parser.parse_args(argv)
@@ -149,6 +150,9 @@ def build_tray(app: QApplication, backend: Backend, icon: QIcon) -> QSystemTrayI
     menu.addAction("Historique du presse-papiers", backend.openClipboard)
     menu.addAction("Bloc-notes", backend.openScratchpad)
     awake_menu = build_awake_menu(menu, backend)
+    cleaning = menu.addAction("Mode nettoyage", backend.startCleaning)
+    cleaning.setVisible(backend.cleaningAvailable)
+    backend.cleaningChanged.connect(lambda: cleaning.setVisible(backend.cleaningAvailable))
     menu.addAction("Réglages…", lambda: backend.openSettings(""))
     menu.addSeparator()
     menu.addAction("Quitter", app.quit)
@@ -214,6 +218,20 @@ def build_awake_menu(parent: QMenu, backend: Backend) -> QMenu:
     return menu
 
 
+def start_cleaning(connection: Gio.DBusConnection) -> bool:
+    """Demande le mode nettoyage au démon (lancé au besoin par activation D-Bus)."""
+    try:
+        connection.call_sync(
+            BUS_NAME, OBJECT_PATH, INTERFACE, "CallAction",
+            GLib.Variant("(ssa{sv})", ("cleaning", "start", {})),
+            None, Gio.DBusCallFlags.NONE, 20000, None,
+        )
+    except GLib.Error as exc:
+        log.error("Mode nettoyage impossible : %s", Gio.DBusError.strip_remote_error(exc) or exc.message)
+        return False
+    return True
+
+
 def name_has_owner(connection: Gio.DBusConnection, name: str) -> bool:
     reply = connection.call_sync(
         "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
@@ -261,6 +279,8 @@ def main(argv: list[str] | None = None) -> int:
 
     instance = SingleInstance(connection, backend)
     if not instance.acquire():
+        if args.clean:
+            return 0 if start_cleaning(connection) else 1
         if args.clipboard:
             instance.forward("OpenClipboard")
         elif args.scratchpad:
@@ -295,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     if tray is not None:
         follow_shell_extension(connection, tray)
     # Sans icône ni extension GNOME, le panneau est le seul point d'entrée : on l'ouvre.
-    requested = args.settings is not None or args.clipboard or args.scratchpad
+    requested = args.settings is not None or args.clipboard or args.scratchpad or args.clean
     if args.panel or (tray is None and not requested and not name_has_owner(connection, SHELL_BUS_NAME)):
         QTimer.singleShot(0, backend.showPanel)
     if args.settings is not None:
@@ -305,6 +325,8 @@ def main(argv: list[str] | None = None) -> int:
         QTimer.singleShot(300, backend.openClipboard)
     if args.scratchpad:
         QTimer.singleShot(300, backend.openScratchpad)
+    if args.clean:
+        QTimer.singleShot(300, lambda: start_cleaning(connection))
 
     # Ctrl+C dans le terminal : laisser Python voir le signal malgré la boucle Qt.
     signal.signal(signal.SIGINT, lambda *_: app.quit())

@@ -11,11 +11,14 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
+import shiboken6
 from PySide6.QtCore import Property, QObject, QPoint, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QGuiApplication
+from PySide6.QtQuick import QQuickWindow
 
 from saturn import paths
 from saturn.ui.client import CallError, DaemonClient
@@ -74,6 +77,9 @@ def coerce_setting(signature: str, value: Any) -> Any:
     raise ValueError(f"Type de réglage inconnu : {signature}")
 
 
+#: Marge après la fin annoncée du nettoyage avant de retirer le voile sans le démon.
+CLEANING_SAFETY_MS = 5000
+
 #: Pourquoi le mode « Rester éveillé » s'est arrêté sans qu'on le demande.
 AWAKE_STOP_MESSAGES = {
     "timer": "Durée écoulée : la mise en veille est de nouveau permise.",
@@ -98,6 +104,7 @@ class Backend(QObject):
     noteLoaded = Signal(int, str)  # id, texte : le QML remplace le contenu de l'éditeur
     noteExported = Signal(str)
     awakeChanged = Signal()
+    cleaningChanged = Signal()
     notify = Signal(str, str)  # message, niveau ("error" ou "info")
 
     def __init__(self, client: DaemonClient, parent: QObject | None = None) -> None:
@@ -119,6 +126,11 @@ class Backend(QObject):
         self._awake: dict[str, Any] = {}
         self._awake_busy = False
         self._awake_was_running = False
+        self._cleaning: dict[str, Any] = {}
+        self._cleaning_was_running = False
+        # Filet de sécurité : si le démon ne dit plus rien, le voile tombe quand même.
+        self._cleaning_safety = QTimer(self, singleShot=True)
+        self._cleaning_safety.timeout.connect(lambda: self._set_cleaning({}))
         self._connected = False
         self._starting = False
         self._version = ""
@@ -134,6 +146,7 @@ class Backend(QObject):
         for signal in (self._modules.dataChanged, self._modules.modelReset, self._modules.rowsInserted):
             signal.connect(self.scratchpadStateChanged)
             signal.connect(self.awakeChanged)
+            signal.connect(self.cleaningChanged)
 
         client.on_available_changed = self._on_available_changed
         client.on_module_changed = self._on_module_changed
@@ -253,6 +266,32 @@ class Backend(QObject):
     def awakeNotice(self) -> str:
         module = self._modules.module("keep_awake") or {}
         return str(module.get("notice") or "")
+
+    @Property(bool, notify=cleaningChanged)
+    def cleaningAvailable(self) -> bool:
+        module = self._modules.module("cleaning")
+        return bool(self._connected and module and module["status"] == "running")
+
+    @Property(bool, notify=cleaningChanged)
+    def cleaningActive(self) -> bool:
+        """Le voile Qt est à afficher (sous GNOME, c'est l'extension qui s'en charge)."""
+        return (
+            self.cleaningAvailable
+            and bool(self._cleaning.get("active"))
+            and self._cleaning.get("surface") == "ui"
+        )
+
+    @Property(float, notify=cleaningChanged)
+    def cleaningUntil(self) -> float:
+        return float(self._cleaning.get("until", 0.0)) * 1000
+
+    @Property(int, notify=cleaningChanged)
+    def cleaningSeconds(self) -> int:
+        return int(self._cleaning.get("seconds", 0))
+
+    @Property(bool, notify=cleaningChanged)
+    def cleaningPointerBlocked(self) -> bool:
+        return bool(self._cleaning.get("block_pointer", False))
 
     @Property(bool, constant=True)
     def canPosition(self) -> bool:
@@ -456,6 +495,53 @@ class Backend(QObject):
             self._awake = {}
             self.awakeChanged.emit()
 
+    # -- mode nettoyage ----------------------------------------------------------------
+
+    @Slot()
+    def startCleaning(self) -> None:
+        self.client.call_action("cleaning", "start", {}, self._set_cleaning, self._report)
+
+    @Slot()
+    def finishCleaning(self) -> None:
+        """Le voile a été quitté (bouton maintenu) : on prévient le démon et on le retire."""
+        self.client.call_action("cleaning", "stop", {"reason": "user"}, self._set_cleaning, None)
+        self._set_cleaning({})
+
+    @Slot(QObject)
+    def grabCleaningInput(self, window: QObject) -> None:
+        """Capture clavier et souris pour le voile (effectif sous X11 ; sous Wayland,
+        le plein écran au premier plan reçoit déjà les touches)."""
+        quick = shiboken6.wrapInstance(shiboken6.getCppPointer(window)[0], QQuickWindow)
+        attempts = [0]
+
+        def grab() -> None:
+            if not self.cleaningActive or not quick.isVisible():
+                return
+            quick.requestActivate()
+            keyboard = quick.setKeyboardGrabEnabled(True)
+            pointer = quick.setMouseGrabEnabled(True)
+            attempts[0] += 1
+            log.debug("Voile : capture clavier %s, souris %s (essai %d)", keyboard, pointer, attempts[0])
+            # La fenêtre n'est pas encore affichée par le serveur X : on réessaie.
+            if not (keyboard and pointer) and attempts[0] < 20 and QGuiApplication.platformName() == "xcb":
+                QTimer.singleShot(100, grab)
+
+        QTimer.singleShot(50, grab)
+
+    def _set_cleaning(self, state: dict[str, Any]) -> None:
+        self._cleaning = dict(state)
+        self._cleaning_safety.stop()
+        if self._cleaning.get("active"):
+            remaining_ms = float(self._cleaning.get("until", 0.0)) * 1000 - time.time() * 1000
+            self._cleaning_safety.start(int(max(0.0, remaining_ms)) + CLEANING_SAFETY_MS)
+        self.cleaningChanged.emit()
+
+    def _refresh_cleaning(self) -> None:
+        if self.cleaningAvailable:
+            self.client.call_action("cleaning", "status", {}, self._set_cleaning, None)
+        elif self._cleaning:
+            self._set_cleaning({})
+
     def _apply_pad_settings(self, values: dict[str, Any]) -> None:
         self._note_font = int(values.get("font_size", self._note_font))
         self.scratchpadStateChanged.emit()
@@ -573,6 +659,8 @@ class Backend(QObject):
             self._reload_notes()
             if int(data.get("id", -1)) == self._current_note:
                 self._load_note(self._current_note)
+        elif module_id == "cleaning" and event == "state-changed":
+            self._set_cleaning(data)
         elif module_id == "keep_awake" and event == "state-changed":
             self._set_awake(data)
             message = AWAKE_STOP_MESSAGES.get(str(data.get("reason", "")))
@@ -595,6 +683,10 @@ class Backend(QObject):
         if awake != self._awake_was_running:
             self._awake_was_running = awake
             self._refresh_awake()
+        cleaning = self.cleaningAvailable
+        if cleaning != self._cleaning_was_running:
+            self._cleaning_was_running = cleaning
+            self._refresh_cleaning()
 
     def _on_start_timeout(self) -> None:
         if not self._connected:

@@ -13,8 +13,9 @@ Window {
     width: 400
     // S'ajuste au contenu : en-tête + pied ≈ 200 px, puis la liste (bornée).
     // « Rester éveillé » ajoute sa carte et un séparateur au-dessus de la liste.
-    readonly property real awakeHeight: awakeCard.visible ? awakeCard.implicitHeight + 37 : 0
-    height: Math.round(Math.min(760, 200 + awakeHeight
+    readonly property real awakeHeight: (awakeCard.visible ? awakeCard.implicitHeight + 37 : 0)
+                                        + (cleaningRow.visible ? cleaningRow.implicitHeight + 13 : 0)
+    height: Math.round(Math.min(820, 200 + awakeHeight
                                 + (Saturn.connected && list.count > 0 ? Math.max(120, list.contentHeight) : 300)))
     title: "Saturn"
     color: "transparent"
@@ -159,6 +160,76 @@ Window {
                 visible: awakeCard.visible
                 Layout.fillWidth: true
                 Layout.topMargin: 18
+                Layout.preferredHeight: 1
+                color: Theme.border
+            }
+
+            // -- mode nettoyage ---------------------------------------------------------
+            Item {
+                id: cleaningRow
+                visible: Saturn.cleaningAvailable
+                Layout.fillWidth: true
+                Layout.topMargin: 6
+                implicitHeight: 56
+                opacity: Math.max(0, Math.min(1, panel.reveal * 1.4 - 0.15))
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.leftMargin: -10
+                    anchors.rightMargin: -10
+                    radius: 10
+                    color: cleaningHover.hovered ? Theme.surfaceHover : "transparent"
+                    Behavior on color { ColorAnimation { duration: Theme.durationFast; easing.type: Easing.OutExpo } }
+                }
+                HoverHandler { id: cleaningHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler {
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: {
+                        panel.dismiss()
+                        Saturn.startCleaning()
+                    }
+                }
+                Accessible.role: Accessible.Button
+                Accessible.name: "Lancer le mode nettoyage"
+
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 14
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Text {
+                            text: "Mode nettoyage"
+                            color: Theme.text
+                            font.family: Theme.displayFont
+                            font.pixelSize: 15
+                            font.weight: Font.Medium
+                            font.variableAxes: ({ "wght": 500 })
+                            font.letterSpacing: -0.2
+                        }
+                        Text {
+                            text: "Écran noir, clavier bloqué"
+                            color: Theme.textFaint
+                            font.family: Theme.monoFont
+                            font.pixelSize: 10
+                            font.letterSpacing: 1.2
+                            font.capitalization: Font.AllUppercase
+                        }
+                    }
+                    Text {
+                        text: "↗"
+                        color: Theme.accent
+                        font.family: Theme.monoFont
+                        font.pixelSize: 13
+                        Layout.rightMargin: cleaningHover.hovered ? 0 : 4
+                        Behavior on Layout.rightMargin { NumberAnimation { duration: Theme.durationBase; easing.type: Easing.OutExpo } }
+                    }
+                }
+            }
+            Rectangle {
+                visible: cleaningRow.visible
+                Layout.fillWidth: true
+                Layout.topMargin: 6
                 Layout.preferredHeight: 1
                 color: Theme.border
             }

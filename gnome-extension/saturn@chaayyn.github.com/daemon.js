@@ -103,6 +103,11 @@ export class DaemonClient {
         return module;
     }
 
+    async getSettings(moduleId) {
+        const [settings] = await this._call('GetSettings', new GLib.Variant('(s)', [moduleId]));
+        return settings;
+    }
+
     /**
      * Action d'un module ; `params` contient des GLib.Variant.
      *

@@ -2,7 +2,7 @@
 
 Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-> État : étape 6. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et quatre modules (Clean URL, Presse-papiers, Bloc-notes, Rester éveillé) fonctionnent.
+> État : étape 7. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et cinq modules (Clean URL, Presse-papiers, Bloc-notes, Rester éveillé, Mode nettoyage) fonctionnent.
 
 ## Architecture
 
@@ -24,6 +24,7 @@ gnome-extension/saturn@chaayyn.github.com (GNOME Shell 50+, GJS)
 ├── extension.js    bouton dans la barre du haut, nom org.saturn.Shell
 ├── indicator.js    menu ancré : modules, interrupteurs, état du démon
 ├── awake.js        « Rester éveillé » en tête du menu : interrupteur et durées
+├── cleaning.js     voile du mode nettoyage (prise modale du Shell)
 ├── clipboard.js    relais du presse-papiers sous GNOME Wayland
 └── daemon.js       client D-Bus de saturnd, ouverture des fenêtres Qt
 ```
@@ -56,6 +57,7 @@ Dépendances : `python3-pyside6.qtquick` et les modules QML Qt 6.
 sudo apt install python3-pyside6.qtquick qml6-module-qtquick qml6-module-qtquick-controls \
   qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-templates \
   qml6-module-qtqml-workerscript fonts-jetbrains-mono
+sudo apt install libxcb-cursor0   # sessions X11 seulement : requis par Qt 6.5+ pour xcb
 python3 -m saturn.ui               # ou `saturn` après `pip install -e .`
 ```
 
@@ -63,7 +65,7 @@ python3 -m saturn.ui               # ou `saturn` après `pip install -e .`
 - **Panneau** (clic sur l'icône) : modules par catégorie, état et interrupteur. Il se ferme quand il perd le focus ou avec Échap. Sous Wayland, c'est le compositeur qui le place (souvent au centre) : une appli ne peut pas se positionner elle-même.
 - **Réglages** : liste des modules à gauche, détail et réglages générés à partir du schéma du démon à droite. Tout se met à jour en direct par les signaux D-Bus.
 - **Démon arrêté** : l'interface l'indique et propose de lancer `saturnd` (journal dans `~/.local/state/saturn/saturnd.log`).
-- **Une seule instance** : relancer `saturn` ouvre le panneau de l'instance existante (`--panel`, `--settings [module]`).
+- **Une seule instance** : relancer `saturn` ouvre le panneau de l'instance existante (`--panel`, `--settings [module]`, `--clipboard`, `--scratchpad`, `--clean`).
 - **Polices** : Space Grotesk (titres, livrée dans `assets/fonts/` sous licence OFL) et JetBrains Mono (valeurs, paquet `fonts-jetbrains-mono`). Sans elles, repli sur Adwaita Sans / Fira Code ; `SATURN_DISPLAY_FONT` et `SATURN_MONO_FONT` imposent une autre famille installée.
 - **Animations** : expo-out, 200 à 450 ms, coupées si GNOME a désactivé les animations ou si `SATURN_REDUCED_MOTION=1`.
 
@@ -114,6 +116,17 @@ Empêche la mise en veille pour 15 min, 30 min, 1 h, 2 h, 5 h ou jusqu'à nouvel
 - La fin de session suit l'horloge murale : après une mise en veille forcée, l'heure de fin reste juste. Quand le démon arrête le mode (durée écoulée, batterie), l'interface et GNOME affichent une notification.
 
 Actions : `start` (`minutes`, 0 = sans fin ; sinon la durée par défaut), `stop`, `toggle`, `status`. Évènement : `state-changed` (avec `reason` : `user`, `timer`, `battery`, `settings`, `error`).
+
+### Mode nettoyage
+
+Un voile noir plein écran qui bloque le clavier, le temps d'essuyer l'écran et les touches. Actif par défaut.
+
+- **Lancer** : ligne « Mode nettoyage » du menu GNOME ou du panneau, menu de l'icône, ou `saturn --clean` (à lier à un raccourci de son bureau).
+- **Sortir** : maintenir le bouton 1,5 s, ou attendre la fin du délai (60 s par défaut, de 10 à 600). Avec « Bloquer aussi la souris », seule la fin du délai fait sortir.
+- **Ce qui est bloqué, selon le bureau** : sous GNOME, l'extension pose le voile avec une prise modale du Shell : touches, raccourcis du bureau et clics n'atteignent plus rien. Sous X11, l'interface Qt capture clavier et souris. Sous KDE, Hyprland ou Sway (Wayland), la fenêtre plein écran reçoit les touches, mais les raccourcis du compositeur restent actifs.
+- **Sécurité** : le démon tient l'horloge ; si `saturnd` disparaît, le voile tombe aussitôt, et il tombe de toute façon 5 s après la fin annoncée. Pendant le nettoyage, l'écran ne s'éteint pas.
+
+Actions : `start` (`seconds`, sinon la durée réglée), `stop`, `status`. Évènement : `state-changed` (`surface` : `shell` ou `ui`, selon qui affiche le voile).
 
 ## API D-Bus
 

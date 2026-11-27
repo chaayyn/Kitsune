@@ -12,6 +12,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {AwakeItem, MODULE_ID as AWAKE_ID, STOP_MESSAGES} from './awake.js';
+import {CleaningOverlay, MODULE_ID as CLEANING_ID} from './cleaning.js';
 import {ClipboardBridge} from './clipboard.js';
 import {DaemonClient, openClipboard, openScratchpad, openSettings} from './daemon.js';
 
@@ -193,6 +194,7 @@ class SaturnIndicator extends PanelMenu.Button {
         this._buildMenu();
 
         this._clipboard = new ClipboardBridge();
+        this._cleaning = new CleaningOverlay(() => this._exitCleaning());
         this._client = new DaemonClient({
             onAvailableChanged: available => this._onAvailableChanged(available),
             onModuleChanged: (id, module) => this._upsert(module),
@@ -249,9 +251,33 @@ class SaturnIndicator extends PanelMenu.Button {
         this._awakeSeparator = new PopupMenu.PopupSeparatorMenuItem();
         this.menu.addMenuItem(this._awakeSeparator);
 
+        // Mode nettoyage : une ligne qui ferme le menu et pose le voile.
+        this._cleaningItem = new PopupMenu.PopupBaseMenuItem({style_class: 'saturn-action-row'});
+        const cleaningText = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
+        cleaningText.add_child(label('Mode nettoyage', 'saturn-module-name'));
+        this._cleaningHint = label('', 'saturn-action-hint');
+        cleaningText.add_child(this._cleaningHint);
+        this._cleaningItem.add_child(cleaningText);
+        this._cleaningItem.add_child(label('↗', 'saturn-action-arrow'));
+        this._cleaningItem.connect('activate', () => this._startCleaning());
+        this.menu.addMenuItem(this._cleaningItem);
+        this._cleaningSeparator = new PopupMenu.PopupSeparatorMenuItem();
+        this.menu.addMenuItem(this._cleaningSeparator);
+
         // Liste des modules.
+        // Liste des modules dans une zone qui défile : le menu tient sur l'écran.
         this._modulesSection = new PopupMenu.PopupMenuSection();
-        this.menu.addMenuItem(this._modulesSection);
+        this._modulesScroll = new St.ScrollView({
+            style_class: 'saturn-modules-scroll',
+            hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            overlay_scrollbars: true,
+        });
+        this._modulesScroll.set_child(this._modulesSection.actor);
+        const modulesHolder = new PopupMenu.PopupMenuSection();
+        modulesHolder.actor.add_child(this._modulesScroll);
+        this.menu.addMenuItem(modulesHolder);
+        this._modulesSection._setParent?.(this.menu);
 
         // État hors ligne.
         this._offline = new PopupMenu.PopupBaseMenuItem({
@@ -303,6 +329,8 @@ class SaturnIndicator extends PanelMenu.Button {
         } else {
             this._modulesSection.removeAll();
             this._items.clear();
+            // Sans démon, plus personne ne lèverait le voile : on le retire tout de suite.
+            this._cleaning.hide();
         }
         this._sync();
     }
@@ -317,6 +345,7 @@ class SaturnIndicator extends PanelMenu.Button {
             this._environment = environment;
             this._version = version;
             this._rebuild(modules);
+            this._syncCleaning();
         } catch (error) {
             logError(error, 'Saturn : lecture des modules impossible');
         }
@@ -368,6 +397,10 @@ class SaturnIndicator extends PanelMenu.Button {
     // -- rester éveillé ------------------------------------------------------------
 
     _onModuleEvent(id, event, data) {
+        if (id === CLEANING_ID && event === 'state-changed') {
+            this._applyCleaning(data);
+            return;
+        }
         if (id !== AWAKE_ID || event !== 'state-changed')
             return;
         this._awakeState = data;
@@ -418,6 +451,57 @@ class SaturnIndicator extends PanelMenu.Button {
             this._icon.remove_style_class_name('saturn-panel-icon-awake');
     }
 
+    // -- mode nettoyage ------------------------------------------------------------
+
+    _applyCleaning(state) {
+        if (state?.active && state.surface === 'shell')
+            this._cleaning.show(state);
+        else
+            this._cleaning.hide();
+    }
+
+    async _startCleaning() {
+        this.menu.close();
+        try {
+            this._applyCleaning(await this._client.callAction(CLEANING_ID, 'start'));
+        } catch (error) {
+            Main.notifyError('Saturn', error.message);
+        }
+    }
+
+    async _exitCleaning() {
+        try {
+            await this._client?.callAction(CLEANING_ID, 'stop', {reason: new GLib.Variant('s', 'user')});
+        } catch (error) {
+            logError(error, 'Saturn : arrêt du mode nettoyage');
+        } finally {
+            this._cleaning?.hide();
+        }
+    }
+
+    async _syncCleaning() {
+        const module = this._items.get(CLEANING_ID)?.module;
+        const running = (this._client?.available ?? false) && module !== undefined &&
+            moduleStatus(module) === 'running';
+        this._cleaningItem.visible = running;
+        this._cleaningSeparator.visible = running;
+        if (!running) {
+            this._cleaning.hide();
+            return;
+        }
+        try {
+            const [state, settings] = await Promise.all([
+                this._client.callAction(CLEANING_ID, 'status'),
+                this._client.getSettings(CLEANING_ID),
+            ]);
+            this._applyCleaning(state);
+            const pointer = settings.block_pointer ? 'CLAVIER ET SOURIS' : 'CLAVIER';
+            this._cleaningHint.text = `${settings.duration} S  ·  ${pointer} BLOQUÉ${settings.block_pointer ? 'S' : ''}`;
+        } catch (error) {
+            logError(error, 'Saturn : état du mode nettoyage illisible');
+        }
+    }
+
     async _startDaemon(userAsked) {
         if (this._client.available || this._startTried && !userAsked)
             return;
@@ -439,7 +523,7 @@ class SaturnIndicator extends PanelMenu.Button {
         const online = this._client?.available ?? false;
         this._daemonStatus.set(online ? 'running' : 'error', online ? 'En ligne' : 'Hors ligne');
         this._offline.visible = !online;
-        this._modulesSection.actor.visible = online;
+        this._modulesScroll.visible = online;
         this._meta.text = online
             ? [`v${this._version}`, this._environment.desktop, this._environment.session]
                 .filter(part => part && part.length > 1).join('  ·  ').toUpperCase()
@@ -457,6 +541,12 @@ class SaturnIndicator extends PanelMenu.Button {
         const notes = this._items.get('scratchpad')?.module;
         this._notesButton.visible = online && notes !== undefined && moduleStatus(notes) === 'running';
         this._clipboard?.setActive(clipboardOn && this._environment.session === 'wayland');
+        const cleaning = this._items.get(CLEANING_ID)?.module;
+        const cleaningOn = online && cleaning !== undefined && moduleStatus(cleaning) === 'running';
+        this._cleaningItem.visible = cleaningOn;
+        this._cleaningSeparator.visible = cleaningOn;
+        if (!cleaningOn)
+            this._cleaning?.hide();
         this._syncAwake();
     }
 
@@ -474,6 +564,8 @@ class SaturnIndicator extends PanelMenu.Button {
         }
         this._clipboard?.destroy();
         this._clipboard = null;
+        this._cleaning?.destroy();
+        this._cleaning = null;
         this._client?.destroy();
         this._client = null;
     }

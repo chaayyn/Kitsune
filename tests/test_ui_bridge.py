@@ -454,3 +454,35 @@ def test_backend_keep_awake_flow(qt_app, bus, monkeypatch) -> None:
         stop_process(fakes)
     pump(lambda: not backend.awakeAvailable)
     client.close()
+
+
+@needs_dbus
+def test_backend_cleaning_flow(qt_app, bus) -> None:
+    address, connection = bus
+    # Ce processus tient le nom de l'interface Qt : le voile est pour lui.
+    connection.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName",
+                         GLib.Variant("(su)", ("org.saturn.Ui", 4)), None, 0, -1, None)
+    client = DaemonClient(connection)
+    backend = Backend(client)
+    process = spawn_daemon(address)
+    try:
+        wait_for_owner(connection)
+        pump(lambda: backend.cleaningAvailable)
+        assert not backend.cleaningActive
+
+        backend.startCleaning()
+        pump(lambda: backend.cleaningActive)
+        assert backend.cleaningSeconds == 60 and not backend.cleaningPointerBlocked
+        assert 0 < backend.cleaningUntil - time.time() * 1000 <= 60_000
+
+        backend.finishCleaning()
+        assert not backend.cleaningActive  # retiré tout de suite, sans attendre le démon
+        pump(lambda: not backend.cleaningActive)
+
+        # Le démon disparaît pendant le nettoyage : le voile tombe aussi.
+        backend.startCleaning()
+        pump(lambda: backend.cleaningActive)
+    finally:
+        assert stop_process(process) == 0, process.stderr.read()
+    pump(lambda: not backend.cleaningActive and not backend.cleaningAvailable)
+    client.close()

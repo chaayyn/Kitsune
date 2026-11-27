@@ -151,6 +151,11 @@ export function openClipboard() {
     return callUi('OpenClipboard', null, ['saturn', '--clipboard']);
 }
 
+/** Ouvre le bloc-notes. */
+export function openScratchpad() {
+    return callUi('OpenScratchpad', null, ['saturn', '--scratchpad']);
+}
+
 /** Cherche un exécutable dans le PATH, puis dans ~/.local/bin (installé par scripts/install.sh). */
 export function findProgram(name) {
     const inPath = GLib.find_program_in_path(name);

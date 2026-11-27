@@ -12,7 +12,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {ClipboardBridge} from './clipboard.js';
-import {DaemonClient, openClipboard, openSettings} from './daemon.js';
+import {DaemonClient, openClipboard, openScratchpad, openSettings} from './daemon.js';
 
 const CATEGORIES = [
     ['clipboard', 'Presse-papiers'],
@@ -265,6 +265,11 @@ class SaturnIndicator extends PanelMenu.Button {
             openClipboard().catch(error => Main.notifyError('Saturn', error.message));
         });
         footer.add_child(this._historyButton);
+        this._notesButton = makeButton('Notes', false, () => {
+            this.menu.close();
+            openScratchpad().catch(error => Main.notifyError('Saturn', error.message));
+        });
+        footer.add_child(this._notesButton);
         footer.add_child(makeButton('Réglages ↗', true, () => {
             this.menu.close();
             openSettings().catch(error => Main.notifyError('Saturn', error.message));
@@ -379,6 +384,8 @@ class SaturnIndicator extends PanelMenu.Button {
         const clipboard = this._items.get('clipboard')?.module;
         const clipboardOn = online && clipboard !== undefined && moduleStatus(clipboard) === 'running';
         this._historyButton.visible = clipboardOn;
+        const notes = this._items.get('scratchpad')?.module;
+        this._notesButton.visible = online && notes !== undefined && moduleStatus(notes) === 'running';
         this._clipboard?.setActive(clipboardOn && this._environment.session === 'wayland');
     }
 

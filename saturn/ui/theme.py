@@ -13,7 +13,7 @@ from pathlib import Path
 
 from gi.repository import Gio
 from PySide6.QtCore import Property, QObject, Signal
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QColor, QFontDatabase, QGuiApplication, QPalette
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +37,14 @@ def load_bundled_fonts(directory: Path) -> list[str]:
             continue
         families += QFontDatabase.applicationFontFamilies(font_id)
     return families
+
+
+def apply_palette(app: QGuiApplication) -> None:
+    """Couleur des liens de l'appli : le rendu Markdown du QML lit la palette globale."""
+    palette = app.palette()
+    palette.setColor(QPalette.ColorRole.Link, QColor(Theme._COLORS["accent"]))
+    palette.setColor(QPalette.ColorRole.LinkVisited, QColor(Theme._COLORS["accentHover"]))
+    app.setPalette(palette)
 
 
 def pick_family(

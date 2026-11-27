@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from collections.abc import Callable
 
 import pytest
@@ -348,6 +349,57 @@ def test_backend_clipboard_flow(qt_app, bus, monkeypatch) -> None:
         pump(lambda: backend.clipboard.count == 1)
         backend.deleteEntry(entry["entryId"])
         pump(lambda: backend.clipboard.count == 0)
+    finally:
+        assert stop_process(process) == 0, process.stderr.read()
+    client.close()
+
+
+@needs_dbus
+def test_backend_scratchpad_flow(qt_app, bus, isolated_xdg) -> None:
+    from gi.repository import GLib as G
+
+    address, connection = bus
+    client = DaemonClient(connection)
+    backend = Backend(client)
+    loaded: list[tuple[int, str]] = []
+    exported: list[str] = []
+    backend.noteLoaded.connect(lambda note_id, body: loaded.append((note_id, body)))
+    backend.noteExported.connect(exported.append)
+
+    def call(action, params):
+        variant = G.Variant("(ssa{sv})", ("scratchpad", action, {k: G.Variant(s, v) for k, (s, v) in params.items()}))
+        return connection.call_sync("org.saturn.Daemon", "/org/saturn/Daemon", "org.saturn.Daemon1",
+                                    "CallAction", variant, None, 0, -1, None).unpack()[0]
+
+    process = spawn_daemon(address)
+    try:
+        wait_for_owner(connection)
+        pump(lambda: backend.connected and backend.scratchpadActive)
+        backend.openScratchpad()
+        pump(lambda: loaded and backend.notes.count == 1)
+        welcome = backend.currentNoteId
+        assert loaded[-1][0] == welcome and loaded[-1][1].startswith("# Bienvenue")
+        assert backend.noteFontSize == 14
+
+        # Enregistrement depuis l'éditeur : le titre de l'onglet suit, sans recharger le texte.
+        before = len(loaded)
+        backend.saveNote(welcome, "# Mes idées\nune")
+        pump(lambda: backend.notes.get(0)["title"] == "Mes idées" and not backend.noteSaving)
+        assert len(loaded) == before
+
+        # Modification venue d'ailleurs : la note ouverte est relue.
+        call("save", {"id": ("x", welcome), "body": ("s", "# Mes idées\nune\ndeux"), "origin": ("s", "autre")})
+        pump(lambda: loaded[-1] == (welcome, "# Mes idées\nune\ndeux"))
+
+        backend.createNote()
+        pump(lambda: backend.notes.count == 2 and backend.currentNoteId != welcome)
+        created = backend.currentNoteId
+        backend.deleteNote(created)
+        pump(lambda: backend.notes.count == 1 and backend.currentNoteId == welcome)
+
+        backend.exportNote(welcome)
+        pump(lambda: exported)
+        assert Path(exported[0]).read_text() == "# Mes idées\nune\ndeux"
     finally:
         assert stop_process(process) == 0, process.stderr.read()
     client.close()

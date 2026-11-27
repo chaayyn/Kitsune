@@ -329,3 +329,41 @@ class ClipboardModel(_RoleModel):
         self.beginResetModel()
         self._rows = rows
         self.endResetModel()
+
+
+class NotesModel(_RoleModel):
+    """Onglets du bloc-notes."""
+
+    ROLES = ("noteId", "title", "preview", "words", "updatedLabel")
+
+    def load(self, notes: Iterable[Mapping[str, Any]], now: float | None = None) -> None:
+        rows = [
+            {
+                "noteId": int(note["id"]),
+                "title": str(note.get("title", "")),
+                "preview": str(note.get("preview", "")),
+                "words": int(note.get("words", 0)),
+                "updatedLabel": relative_time(float(note.get("updated", 0)), now),
+            }
+            for note in notes
+        ]
+        if [r["noteId"] for r in rows] == [r["noteId"] for r in self._rows]:
+            # Mêmes onglets : mise à jour sur place, pour ne pas faire sauter la sélection.
+            for index, row in enumerate(rows):
+                if row != self._rows[index]:
+                    self._rows[index] = row
+                    self._emit_row_changed(index)
+            return
+        self.beginResetModel()
+        self._rows = rows
+        self.endResetModel()
+
+    def ids(self) -> list[int]:
+        return [row["noteId"] for row in self._rows]
+
+    @Slot(int, result=int)
+    def indexOf(self, note_id: int) -> int:
+        for index, row in enumerate(self._rows):
+            if row["noteId"] == note_id:
+                return index
+        return -1

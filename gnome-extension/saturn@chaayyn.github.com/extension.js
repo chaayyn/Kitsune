@@ -12,7 +12,7 @@ import Shell from 'gi://Shell';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-import {openClipboard} from './daemon.js';
+import {openClipboard, openScratchpad} from './daemon.js';
 import {SaturnIndicator} from './indicator.js';
 
 const SHELL_BUS_NAME = 'org.saturn.Shell';
@@ -24,15 +24,18 @@ export default class SaturnExtension extends Extension {
         this._nameId = Gio.bus_own_name(Gio.BusType.SESSION, SHELL_BUS_NAME,
             Gio.BusNameOwnerFlags.NONE, null, null, null);
 
-        // Super+Maj+V par défaut : historique du presse-papiers.
+        // Raccourcis (modifiables dans le schéma GSettings de l'extension).
         this._settings = this.getSettings();
-        Main.wm.addKeybinding('clipboard-history', this._settings, Meta.KeyBindingFlags.NONE,
-            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-            () => openClipboard().catch(error => Main.notifyError('Saturn', error.message)));
+        for (const [key, open] of [['clipboard-history', openClipboard], ['scratchpad', openScratchpad]]) {
+            Main.wm.addKeybinding(key, this._settings, Meta.KeyBindingFlags.NONE,
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
+                () => open().catch(error => Main.notifyError('Saturn', error.message)));
+        }
     }
 
     disable() {
         Main.wm.removeKeybinding('clipboard-history');
+        Main.wm.removeKeybinding('scratchpad');
         this._settings = null;
         if (this._nameId) {
             Gio.bus_unown_name(this._nameId);

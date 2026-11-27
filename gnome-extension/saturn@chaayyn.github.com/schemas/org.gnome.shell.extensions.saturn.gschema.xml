@@ -6,5 +6,10 @@
       <summary>Raccourci de l'historique du presse-papiers</summary>
       <description>Ouvre la fenêtre d'historique de Saturn.</description>
     </key>
+    <key name="scratchpad" type="as">
+      <default><![CDATA[['<Super><Shift>n']]]></default>
+      <summary>Raccourci du bloc-notes</summary>
+      <description>Ouvre le bloc-notes de Saturn.</description>
+    </key>
   </schema>
 </schemalist>

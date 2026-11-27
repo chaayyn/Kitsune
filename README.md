@@ -2,7 +2,7 @@
 
 Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-> État : étape 4. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et deux modules (Clean URL, Presse-papiers) fonctionnent.
+> État : étape 5. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et trois modules (Clean URL, Presse-papiers, Bloc-notes) fonctionnent.
 
 ## Architecture
 
@@ -91,6 +91,17 @@ Historique local du presse-papiers : texte, images et fichiers copiés, avec rec
 - **Stockage** : `~/.local/share/saturn/modules/clipboard.db` et les images dans `~/.local/share/saturn/modules/clipboard/images/`, lisibles par vous seul.
 
 Actions : `push`, `list`, `get`, `copy`, `pin`, `delete`, `clear`. Évènements : `history-changed`, `ignored`, `link-cleaned`, `write` (écriture demandée à l'extension GNOME).
+
+### Bloc-notes
+
+Notes rapides en onglets, enregistrées au fil de la frappe (dans `~/.local/share/saturn/modules/scratchpad.db`). Le titre d'un onglet est la première ligne de la note.
+
+- **Ouvrir** : `Super+Maj+N` sous GNOME, le bouton « Notes » du menu, `saturn --scratchpad` ou le menu de l'icône.
+- **Éditer, Aperçu, Les deux** : l'aperçu met en forme le Markdown. `Ctrl+N` nouvelle note, `Ctrl+E` bascule l'aperçu, `Ctrl+Tab` note suivante. Supprimer un onglet demande une confirmation (deux clics sur ×).
+- **Exporter** écrit la note en `.md` dans `~/Documents/Saturn` (réglable), sans jamais écraser un fichier existant.
+- Plusieurs fenêtres ou clients restent synchronisés : chaque modification est diffusée (`notes-changed`).
+
+Actions : `list`, `get`, `create`, `save`, `delete`, `move`, `export`. Réglages : dossier d'export, taille du texte.
 
 ## API D-Bus
 

@@ -7,6 +7,7 @@ QtObject {
     property Panel panel: Panel {}
     property SettingsWindow settingsWindow: SettingsWindow {}
     property ClipboardWindow clipboardWindow: ClipboardWindow {}
+    property ScratchpadWindow scratchpadWindow: ScratchpadWindow {}
 
     property Connections router: Connections {
         target: Saturn
@@ -15,6 +16,10 @@ QtObject {
         function onClipboardRequested() {
             root.panel.dismiss()
             root.clipboardWindow.open()
+        }
+        function onScratchpadRequested() {
+            root.panel.dismiss()
+            root.scratchpadWindow.open()
         }
         function onSettingsRequested(moduleId) {
             root.panel.dismiss()

@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from saturn import __version__
 from saturn.ui.backend import Backend
 from saturn.ui.client import DaemonClient
-from saturn.ui.theme import Theme, load_bundled_fonts
+from saturn.ui.theme import Theme, apply_palette, load_bundled_fonts
 
 log = logging.getLogger("saturn.ui")
 
@@ -33,6 +33,7 @@ UI_XML = f"""
     <method name="ShowPanel"/>
     <method name="OpenSettings"><arg name="id" type="s" direction="in"/></method>
     <method name="OpenClipboard"/>
+    <method name="OpenScratchpad"/>
   </interface>
 </node>
 """
@@ -57,6 +58,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--clipboard", action="store_true", help="ouvrir l'historique du presse-papiers"
     )
+    parser.add_argument("--scratchpad", action="store_true", help="ouvrir le bloc-notes")
     parser.add_argument("-v", "--verbose", action="store_true", help="journal détaillé")
     parser.add_argument("--version", action="version", version=f"saturn {__version__}")
     return parser.parse_args(argv)
@@ -128,6 +130,8 @@ class SingleInstance:
             self.backend.openSettings(params.unpack()[0])
         elif method == "OpenClipboard":
             self.backend.openClipboard()
+        elif method == "OpenScratchpad":
+            self.backend.openScratchpad()
         invocation.return_value(None)
 
 
@@ -143,6 +147,7 @@ def build_tray(app: QApplication, backend: Backend, icon: QIcon) -> QSystemTrayI
     menu = QMenu()
     menu.addAction("Ouvrir Saturn", backend.showPanel)
     menu.addAction("Historique du presse-papiers", backend.openClipboard)
+    menu.addAction("Bloc-notes", backend.openScratchpad)
     menu.addAction("Réglages…", lambda: backend.openSettings(""))
     menu.addSeparator()
     menu.addAction("Quitter", app.quit)
@@ -215,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     if not instance.acquire():
         if args.clipboard:
             instance.forward("OpenClipboard")
+        elif args.scratchpad:
+            instance.forward("OpenScratchpad")
         elif args.settings is not None:
             instance.forward("OpenSettings", GLib.Variant("(s)", (args.settings,)))
         else:
@@ -224,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
 
     bundled = load_bundled_fonts(FONTS_DIR)
     theme = Theme(app)
+    apply_palette(app)
     if theme.missing_fonts:
         log.warning(
             "Polices absentes : %s (repli sur %s / %s)",
@@ -244,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     if tray is not None:
         follow_shell_extension(connection, tray)
     # Sans icône ni extension GNOME, le panneau est le seul point d'entrée : on l'ouvre.
-    requested = args.settings is not None or args.clipboard
+    requested = args.settings is not None or args.clipboard or args.scratchpad
     if args.panel or (tray is None and not requested and not name_has_owner(connection, SHELL_BUS_NAME)):
         QTimer.singleShot(0, backend.showPanel)
     if args.settings is not None:
@@ -252,6 +260,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.clipboard:
         # Laisse le temps à la connexion au démon d'aboutir avant de chercher.
         QTimer.singleShot(300, backend.openClipboard)
+    if args.scratchpad:
+        QTimer.singleShot(300, backend.openScratchpad)
 
     # Ctrl+C dans le terminal : laisser Python voir le signal malgré la boucle Qt.
     signal.signal(signal.SIGINT, lambda *_: app.quit())

@@ -33,13 +33,12 @@ EOF
     chmod +x "${BIN_DIR}/${name}"
 done
 
-step "Activation D-Bus de org.saturn.Daemon"
+step "Activation D-Bus (démon et interface)"
 mkdir -p "${DBUS_DIR}"
-cat > "${DBUS_DIR}/org.saturn.Daemon.service" <<EOF
-[D-BUS Service]
-Name=org.saturn.Daemon
-Exec=${BIN_DIR}/saturnd
-EOF
+for pair in "org.saturn.Daemon:saturnd" "org.saturn.Ui:saturn"; do
+    printf '[D-BUS Service]\nName=%s\nExec=%s\n' "${pair%%:*}" "${BIN_DIR}/${pair#*:}" \
+        > "${DBUS_DIR}/${pair%%:*}.service"
+done
 
 step "Police Space Grotesk"
 mkdir -p "${FONT_DIR}"
@@ -49,6 +48,7 @@ command -v fc-cache >/dev/null && fc-cache -f "${FONT_DIR}" >/dev/null || true
 if command -v gnome-shell >/dev/null; then
     step "Extension GNOME Shell ${UUID}"
     mkdir -p "${EXT_DIR}"
+    glib-compile-schemas "${REPO}/gnome-extension/${UUID}/schemas"
     ln -sfn "${REPO}/gnome-extension/${UUID}" "${EXT_DIR}/${UUID}"
 
     if gnome-extensions enable "${UUID}" 2>/dev/null; then

@@ -27,6 +27,7 @@ class ModuleState:
     missing: tuple[str, ...]
     error: str | None
     actions: tuple[str, ...]
+    notice: str = ""
 
     @property
     def available(self) -> bool:
@@ -44,6 +45,7 @@ class ModuleState:
             "missing": list(self.missing),
             "error": self.error or "",
             "actions": list(self.actions),
+            "notice": self.notice,
         }
 
 
@@ -64,6 +66,7 @@ class ModuleManager:
         self.event_listeners: list[EventListener] = []
         self._running: dict[str, tuple[Module, ModuleContext]] = {}
         self._errors: dict[str, str] = {}
+        self._notices: dict[str, str] = {}
         self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     # -- démarrage / arrêt du démon ---------------------------------------------
@@ -102,9 +105,10 @@ class ModuleManager:
             info=info,
             enabled=self.is_enabled(module_id),
             running=running is not None,
-            missing=tuple(req.describe() for req in info.missing_requirements()),
+            missing=tuple(req.describe() for req in info.missing_requirements(self.env)),
             error=self._errors.get(module_id),
             actions=tuple(running[0].action_names()) if running else (),
+            notice=self._notices.get(module_id, "") if running else "",
         )
 
     def states(self) -> list[ModuleState]:
@@ -114,7 +118,7 @@ class ModuleManager:
         info = self.registry.info(module_id)
         async with self._locks[module_id]:
             if enabled:
-                missing = info.missing_requirements()
+                missing = info.missing_requirements(self.env)
                 if missing:
                     raise ModuleUnavailableError(
                         f"Impossible d'activer {info.name} : il manque "
@@ -180,7 +184,7 @@ class ModuleManager:
 
     async def _start(self, module_id: str) -> bool:
         info = self.registry.info(module_id)
-        missing = info.missing_requirements()
+        missing = info.missing_requirements(self.env)
         if missing:
             self._errors[module_id] = "Dépendances manquantes : " + ", ".join(
                 req.describe() for req in missing
@@ -193,6 +197,7 @@ class ModuleManager:
             self.env,
             settings_getter=lambda: self.settings(module_id),
             emitter=lambda event, data: self._emit(module_id, event, data),
+            host=self,
         )
         try:
             instance = self.registry.load_class(module_id)(context)
@@ -208,7 +213,19 @@ class ModuleManager:
         log.info("Module démarré : %s", module_id)
         return True
 
+    def set_notice(self, module_id: str, text: str) -> None:
+        """Avertissement d'un module actif ; notifié comme un changement d'état."""
+        if self._notices.get(module_id, "") == text:
+            return
+        if text:
+            self._notices[module_id] = text
+        else:
+            self._notices.pop(module_id, None)
+        if module_id in self._running:
+            self._notify(self.state_listeners, self.state(module_id))
+
     async def _stop(self, module_id: str) -> None:
+        self._notices.pop(module_id, None)
         instance, context = self._running.pop(module_id)
         try:
             await instance.stop()

@@ -273,3 +273,81 @@ def test_tray_icon_hides_while_gnome_extension_runs(qt_app, bus) -> None:
         pump(lambda: tray.visible)
     finally:
         Gio.bus_unwatch_name(watch)
+
+
+def test_clipboard_model_labels(qt_app) -> None:
+    from saturn.ui.models import ClipboardModel, human_size, relative_time
+
+    now = 1_000_000.0
+    assert relative_time(now - 5, now) == "à l'instant"
+    assert relative_time(now - 600, now) == "il y a 10 min"
+    assert relative_time(now - 7200, now) == "il y a 2 h"
+    assert relative_time(now - 90000, now) == "hier"
+    assert human_size("text", 512) == "512 o"
+    assert human_size("image", 2048) == "2,0 Ko"
+    assert human_size("files", 1) == "1 fichier"
+
+    model = ClipboardModel()
+    revision = model.revision
+    model.load([
+        {"id": 3, "kind": "image", "preview": "Image PNG", "image": "/tmp/a.png", "size": 10, "used": now},
+        {"id": 2, "kind": "text", "preview": "Bonjour", "text": "Bonjour", "pinned": True, "used": now - 600},
+    ], now=now)
+    assert model.revision == revision + 1
+    assert model.get(0)["imageUrl"] == "file:///tmp/a.png"
+    assert model.get(1)["timeLabel"] == "il y a 10 min" and model.get(1)["pinned"] is True
+
+
+@needs_dbus
+def test_backend_clipboard_flow(qt_app, bus, monkeypatch) -> None:
+    from gi.repository import GLib as G
+
+    address, connection = bus
+    client = DaemonClient(connection)
+    backend = Backend(client)
+    writes: list[dict] = []
+    previous = client.on_module_event
+
+    def on_event(module_id, event, data):
+        if event == "write":
+            writes.append(data)
+        previous(module_id, event, data)
+
+    client.on_module_event = on_event
+    process = spawn_daemon(address)
+    try:
+        wait_for_owner(connection)
+        pump(lambda: backend.connected and backend.modules.count >= 2)
+        assert backend.clipboardInstalled and not backend.clipboardActive
+
+        backend.setClipboardVisible(True)
+        backend.setModuleEnabled("clipboard", True)
+        pump(lambda: backend.clipboardActive)
+        # Bureau GNOME simulé sans l'extension : le module le signale.
+        pump(lambda: "extension GNOME" in backend.clipboardNotice)
+
+        push = G.Variant("(ssa{sv})", ("clipboard", "push", {"text": G.Variant("s", "Copié ailleurs")}))
+        connection.call_sync("org.saturn.Daemon", "/org/saturn/Daemon", "org.saturn.Daemon1",
+                             "CallAction", push, None, 0, -1, None)
+        pump(lambda: backend.clipboard.count == 1)  # rechargé par l'évènement history-changed
+        assert backend.clipboardTotal == 1
+        entry = backend.clipboard.get(0)
+        assert entry["text"] == "Copié ailleurs"
+
+        copied = []
+        backend.clipboardCopied.connect(lambda: copied.append(True))
+        backend.copyEntry(entry["entryId"])
+        pump(lambda: copied and writes)
+        assert writes[-1] == {"text": "Copié ailleurs"}  # relayé à l'extension GNOME
+
+        backend.pinEntry(entry["entryId"], True)
+        pump(lambda: backend.clipboard.get(0).get("pinned") is True)
+        backend.searchClipboard("introuvable")
+        pump(lambda: backend.clipboard.count == 0)
+        backend.searchClipboard("")
+        pump(lambda: backend.clipboard.count == 1)
+        backend.deleteEntry(entry["entryId"])
+        pump(lambda: backend.clipboard.count == 0)
+    finally:
+        assert stop_process(process) == 0, process.stderr.read()
+    client.close()

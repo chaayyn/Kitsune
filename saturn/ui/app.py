@@ -32,6 +32,7 @@ UI_XML = f"""
     <method name="TogglePanel"/>
     <method name="ShowPanel"/>
     <method name="OpenSettings"><arg name="id" type="s" direction="in"/></method>
+    <method name="OpenClipboard"/>
   </interface>
 </node>
 """
@@ -52,6 +53,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--panel", action="store_true", help="ouvrir le panneau au lancement")
     parser.add_argument(
         "--settings", nargs="?", const="", metavar="MODULE", help="ouvrir les réglages"
+    )
+    parser.add_argument(
+        "--clipboard", action="store_true", help="ouvrir l'historique du presse-papiers"
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="journal détaillé")
     parser.add_argument("--version", action="version", version=f"saturn {__version__}")
@@ -122,6 +126,8 @@ class SingleInstance:
             self.backend.showPanel()
         elif method == "OpenSettings":
             self.backend.openSettings(params.unpack()[0])
+        elif method == "OpenClipboard":
+            self.backend.openClipboard()
         invocation.return_value(None)
 
 
@@ -136,6 +142,7 @@ def build_tray(app: QApplication, backend: Backend, icon: QIcon) -> QSystemTrayI
     tray.setToolTip("Saturn")
     menu = QMenu()
     menu.addAction("Ouvrir Saturn", backend.showPanel)
+    menu.addAction("Historique du presse-papiers", backend.openClipboard)
     menu.addAction("Réglages…", lambda: backend.openSettings(""))
     menu.addSeparator()
     menu.addAction("Quitter", app.quit)
@@ -206,7 +213,9 @@ def main(argv: list[str] | None = None) -> int:
 
     instance = SingleInstance(connection, backend)
     if not instance.acquire():
-        if args.settings is not None:
+        if args.clipboard:
+            instance.forward("OpenClipboard")
+        elif args.settings is not None:
             instance.forward("OpenSettings", GLib.Variant("(s)", (args.settings,)))
         else:
             instance.forward("ShowPanel" if args.panel else "TogglePanel")
@@ -235,10 +244,14 @@ def main(argv: list[str] | None = None) -> int:
     if tray is not None:
         follow_shell_extension(connection, tray)
     # Sans icône ni extension GNOME, le panneau est le seul point d'entrée : on l'ouvre.
-    if args.panel or (tray is None and not name_has_owner(connection, SHELL_BUS_NAME)):
+    requested = args.settings is not None or args.clipboard
+    if args.panel or (tray is None and not requested and not name_has_owner(connection, SHELL_BUS_NAME)):
         QTimer.singleShot(0, backend.showPanel)
     if args.settings is not None:
         QTimer.singleShot(0, lambda: backend.openSettings(args.settings))
+    if args.clipboard:
+        # Laisse le temps à la connexion au démon d'aboutir avant de chercher.
+        QTimer.singleShot(300, backend.openClipboard)
 
     # Ctrl+C dans le terminal : laisser Python voir le signal malgré la boucle Qt.
     signal.signal(signal.SIGINT, lambda *_: app.quit())

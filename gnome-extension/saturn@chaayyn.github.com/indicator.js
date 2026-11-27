@@ -11,7 +11,8 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {DaemonClient, openSettings} from './daemon.js';
+import {ClipboardBridge} from './clipboard.js';
+import {DaemonClient, openClipboard, openSettings} from './daemon.js';
 
 const CATEGORIES = [
     ['clipboard', 'Presse-papiers'],
@@ -188,6 +189,7 @@ class SaturnIndicator extends PanelMenu.Button {
         this.menu.actor.add_style_class_name('saturn-menu');
         this._buildMenu();
 
+        this._clipboard = new ClipboardBridge();
         this._client = new DaemonClient({
             onAvailableChanged: available => this._onAvailableChanged(available),
             onModuleChanged: (id, module) => this._upsert(module),
@@ -258,6 +260,11 @@ class SaturnIndicator extends PanelMenu.Button {
         });
         this._counter = label('—', 'saturn-counter', {x_expand: true});
         footer.add_child(this._counter);
+        this._historyButton = makeButton('Historique', false, () => {
+            this.menu.close();
+            openClipboard().catch(error => Main.notifyError('Saturn', error.message));
+        });
+        footer.add_child(this._historyButton);
         footer.add_child(makeButton('Réglages ↗', true, () => {
             this.menu.close();
             openSettings().catch(error => Main.notifyError('Saturn', error.message));
@@ -367,6 +374,12 @@ class SaturnIndicator extends PanelMenu.Button {
         const active = modules.filter(module => moduleStatus(module) === 'running').length;
         this._counter.text = online ? `${active} / ${modules.length} ACTIFS` : '—';
         this._icon.opacity = online ? 255 : 140;
+
+        // Le presse-papiers ne passe par l'extension que sous Wayland (sous X11, saturnd le lit lui-même).
+        const clipboard = this._items.get('clipboard')?.module;
+        const clipboardOn = online && clipboard !== undefined && moduleStatus(clipboard) === 'running';
+        this._historyButton.visible = clipboardOn;
+        this._clipboard?.setActive(clipboardOn && this._environment.session === 'wayland');
     }
 
     destroy() {
@@ -374,6 +387,8 @@ class SaturnIndicator extends PanelMenu.Button {
             GLib.source_remove(this._autoStartId);
             this._autoStartId = 0;
         }
+        this._clipboard?.destroy();
+        this._clipboard = null;
         this._client?.destroy();
         this._client = null;
         super.destroy();

@@ -19,7 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, Protocol
 
 from saturn import paths
 from saturn.desktop import Environment
@@ -46,14 +46,30 @@ class Requirement:
     name: str
     #: Indication pour l'utilisateur, par ex. le paquet à installer.
     hint: str = ""
+    #: Limite la dépendance à certains types de session (``"wayland"``, ``"x11"``).
+    sessions: tuple[str, ...] = ()
+    #: Limite la dépendance à certaines familles de bureaux (``"gnome"``, ``"kde"``…).
+    families: tuple[str, ...] = ()
 
     @classmethod
-    def binary(cls, name: str, hint: str = "") -> Requirement:
-        return cls("binary", name, hint)
+    def binary(
+        cls, name: str, hint: str = "", *, sessions: tuple[str, ...] = (), families: tuple[str, ...] = ()
+    ) -> Requirement:
+        return cls("binary", name, hint, sessions, families)
 
     @classmethod
-    def python(cls, name: str, hint: str = "") -> Requirement:
-        return cls("python", name, hint)
+    def python(
+        cls, name: str, hint: str = "", *, sessions: tuple[str, ...] = (), families: tuple[str, ...] = ()
+    ) -> Requirement:
+        return cls("python", name, hint, sessions, families)
+
+    def applies_to(self, env: Environment | None) -> bool:
+        """Une dépendance limitée à un bureau ne compte pas ailleurs."""
+        if env is None:
+            return True
+        if self.sessions and str(env.session) not in self.sessions:
+            return False
+        return not self.families or str(env.family) in self.families
 
     def is_met(self) -> bool:
         if self.kind == "binary":
@@ -96,8 +112,20 @@ class ModuleInfo:
                 return setting
         raise UnknownSettingError(f"Le module {self.id!r} n'a pas de réglage {key!r}")
 
-    def missing_requirements(self) -> list[Requirement]:
-        return [req for req in self.requirements if not req.is_met()]
+    def missing_requirements(self, env: Environment | None = None) -> list[Requirement]:
+        return [req for req in self.requirements if req.applies_to(env) and not req.is_met()]
+
+
+class ModuleHost(Protocol):
+    """Ce que le gestionnaire de modules expose aux modules (voir ModuleManager)."""
+
+    def set_notice(self, module_id: str, text: str) -> None: ...
+
+    def is_running(self, module_id: str) -> bool: ...
+
+    async def call_action(
+        self, module_id: str, action: str, params: Mapping[str, Any]
+    ) -> dict[str, Any]: ...
 
 
 class ModuleContext:
@@ -109,12 +137,14 @@ class ModuleContext:
         env: Environment,
         settings_getter: Callable[[], dict[str, Any]],
         emitter: Callable[[str, Mapping[str, Any]], None],
+        host: ModuleHost | None = None,
     ) -> None:
         self.info = info
         self.env = env
         self.log = logging.getLogger(f"saturn.modules.{info.id}")
         self._settings_getter = settings_getter
         self._emitter = emitter
+        self._host = host
         self._database: Database | None = None
 
     @property
@@ -144,6 +174,26 @@ class ModuleContext:
     def emit(self, event: str, data: Mapping[str, Any] | None = None) -> None:
         """Diffuse un évènement aux clients (signal D-Bus ``ModuleEvent``)."""
         self._emitter(event, dict(data or {}))
+
+    def set_notice(self, text: str) -> None:
+        """Avertissement affiché sous le module (``""`` pour l'effacer).
+
+        Pour un module qui tourne mais ne peut pas tout faire, par exemple
+        parce qu'il lui manque l'extension GNOME.
+        """
+        if self._host is not None:
+            self._host.set_notice(self.id, text)
+
+    def is_module_running(self, module_id: str) -> bool:
+        return self._host is not None and self._host.is_running(module_id)
+
+    async def call_module(
+        self, module_id: str, action: str, params: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Appelle l'action d'un autre module (il doit être actif)."""
+        if self._host is None:
+            raise RuntimeError("Aucun hôte pour appeler d'autres modules")
+        return await self._host.call_action(module_id, action, dict(params or {}))
 
     def close(self) -> None:
         if self._database is not None:

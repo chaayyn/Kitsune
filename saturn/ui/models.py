@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, QPersistentModelIndex, Qt, Property, Signal, Slot
+from PySide6.QtCore import (
+    Property,
+    QAbstractListModel,
+    QByteArray,
+    QModelIndex,
+    QPersistentModelIndex,
+    Qt,
+    QUrl,
+    Signal,
+    Slot,
+)
 
 #: Ordre d'affichage et libellés des catégories.
 CATEGORIES: dict[str, str] = {
@@ -101,6 +112,7 @@ class ModuleListModel(_RoleModel):
         "actions",
         "status",
         "pending",
+        "notice",
     )
     activeCountChanged = Signal()
 
@@ -164,6 +176,7 @@ class ModuleListModel(_RoleModel):
             "actions": list(module.get("actions", [])),
             "status": module_status(module),
             "pending": False,
+            "notice": str(module.get("notice", "")),
         }
 
 
@@ -241,3 +254,78 @@ class SettingsModel(_RoleModel):
             if entry["key"] == key:
                 return row
         return -1
+
+
+def relative_time(timestamp: float, now: float | None = None) -> str:
+    """« à l'instant », « il y a 5 min », « hier »… pour l'historique."""
+    now = time.time() if now is None else now
+    delta = max(0.0, now - timestamp)
+    if delta < 60:
+        return "à l'instant"
+    if delta < 3600:
+        return f"il y a {int(delta // 60)} min"
+    if delta < 86400:
+        return f"il y a {int(delta // 3600)} h"
+    if delta < 2 * 86400:
+        return "hier"
+    return time.strftime("%d/%m/%Y", time.localtime(timestamp))
+
+
+def human_size(kind: str, size: int) -> str:
+    if kind == "files":
+        return f"{size} fichier{'s' if size > 1 else ''}"
+    if size < 1024:
+        return f"{size} o"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} Ko".replace(".", ",")
+    return f"{size / 1024 / 1024:.1f} Mo".replace(".", ",")
+
+
+class ClipboardModel(_RoleModel):
+    """Résultats de recherche dans l'historique du presse-papiers."""
+
+    ROLES = (
+        "entryId",
+        "kind",
+        "preview",
+        "text",
+        "imageUrl",
+        "files",
+        "pinned",
+        "timeLabel",
+        "sizeLabel",
+    )
+    revisionChanged = Signal()
+
+    def __init__(self, parent: Any = None) -> None:
+        super().__init__(parent)
+        self._revision = 0
+        self.modelReset.connect(self._bump)
+
+    def _bump(self) -> None:
+        self._revision += 1
+        self.revisionChanged.emit()
+
+    @Property(int, notify=revisionChanged)
+    def revision(self) -> int:
+        """Change à chaque rechargement : le QML s'en sert pour relire l'élément courant."""
+        return self._revision
+
+    def load(self, items: Iterable[Mapping[str, Any]], now: float | None = None) -> None:
+        rows = [
+            {
+                "entryId": int(item["id"]),
+                "kind": str(item.get("kind", "text")),
+                "preview": str(item.get("preview", "")),
+                "text": str(item.get("text", "")),
+                "imageUrl": QUrl.fromLocalFile(item["image"]).toString() if item.get("image") else "",
+                "files": list(item.get("files", [])),
+                "pinned": bool(item.get("pinned", False)),
+                "timeLabel": relative_time(float(item.get("used", 0)), now),
+                "sizeLabel": human_size(str(item.get("kind", "text")), int(item.get("size", 0))),
+            }
+            for item in items
+        ]
+        self.beginResetModel()
+        self._rows = rows
+        self.endResetModel()

@@ -2,7 +2,7 @@
 
 Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-> État : étape 3. Le démon, le système de modules, l'API D-Bus, un premier module (Clean URL), l'interface Qt/QML et l'extension GNOME Shell fonctionnent.
+> État : étape 4. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et deux modules (Clean URL, Presse-papiers) fonctionnent.
 
 ## Architecture
 
@@ -23,7 +23,8 @@ saturn (interface PySide6 + QML, aucune logique métier)
 gnome-extension/saturn@chaayyn.github.com (GNOME Shell 50+, GJS)
 ├── extension.js    bouton dans la barre du haut, nom org.saturn.Shell
 ├── indicator.js    menu ancré : modules, interrupteurs, état du démon
-└── daemon.js       client D-Bus de saturnd, ouverture des réglages Qt
+├── clipboard.js    relais du presse-papiers sous GNOME Wayland
+└── daemon.js       client D-Bus de saturnd, ouverture des fenêtres Qt
 ```
 
 Données : `~/.config/saturn/` pour les réglages, `~/.local/share/saturn/modules/<id>.db` pour les bases SQLite des modules (créées seulement à la première utilisation).
@@ -73,6 +74,24 @@ Elle ne fait que relayer l'API D-Bus du démon : aucune logique métier côté S
 
 L'interface parle au démon avec Gio plutôt que QtDBus : PySide6 convertit mal les `a{sv}` de l'API, et la boucle Qt sous Linux est une boucle GLib, donc les rappels Gio y sont traités directement.
 
+## Modules
+
+### Clean URL
+
+Retire les paramètres de pistage des liens (`utm_*`, `fbclid`, `gclid`, `si`…), avec des listes de paramètres à retirer en plus ou à toujours garder. Action `clean`.
+
+### Presse-papiers
+
+Historique local du presse-papiers : texte, images et fichiers copiés, avec recherche, favoris, aperçu et recopie. Désactivé par défaut.
+
+- **Fenêtre d'historique** : `Super+Maj+V` sous GNOME (raccourci de l'extension), sinon `saturn --clipboard` à lier à un raccourci de son bureau, ou le menu de l'icône. Saisir pour chercher, `↑↓` pour naviguer, `Entrée` pour recopier, `Ctrl+P` pour épingler, `Ctrl+Suppr` pour supprimer.
+- **Secrets ignorés** : contenus marqués par un gestionnaire de mots de passe (KeePassXC…), clés privées, jetons GitHub / GitLab / Slack, clés AWS, Google, Stripe, clés d'API `sk-…`, JWT.
+- **Réglages** : nombre d'éléments et durée de conservation (les favoris ne sont jamais supprimés), images et fichiers on/off, nettoyage automatique des liens copiés (via Clean URL), vidage du presse-papiers après un délai.
+- **Selon le bureau** : sous GNOME Wayland, seule l'extension peut lire le presse-papiers, elle relaie donc les copies au démon. Sous KDE, Hyprland, Sway… c'est `wl-paste` / `wl-copy` (paquet `wl-clipboard`). Sous X11, c'est Gtk 3.
+- **Stockage** : `~/.local/share/saturn/modules/clipboard.db` et les images dans `~/.local/share/saturn/modules/clipboard/images/`, lisibles par vous seul.
+
+Actions : `push`, `list`, `get`, `copy`, `pin`, `delete`, `clear`. Évènements : `history-changed`, `ignored`, `link-cleaned`, `write` (écriture demandée à l'extension GNOME).
+
 ## API D-Bus
 
 Nom `org.saturn.Daemon`, objet `/org/saturn/Daemon`, interface `org.saturn.Daemon1`.
@@ -104,7 +123,7 @@ Un module est un sous-paquet de `saturn/modules/` :
 - `__init__.py` ne contient que le `MANIFEST` (`ModuleInfo` : id, nom, catégorie, réglages, dépendances système). Il est lu même quand le module est désactivé, donc pas d'import lourd ici.
 - l'implémentation (par ex. `module.py`) hérite de `saturn.module.Module`. Elle est importée seulement à l'activation : `start()` / `stop()` pour les ressources, `on_setting_changed()`, et des méthodes marquées `@action()` appelables par D-Bus.
 
-Le contexte `self.ctx` donne les réglages, l'environnement détecté (`ctx.env`), une base SQLite paresseuse (`ctx.database()`) et `ctx.emit()` pour pousser des évènements. `saturn/modules/clean_url/` sert d'exemple.
+Le contexte `self.ctx` donne les réglages, l'environnement détecté (`ctx.env`), une base SQLite paresseuse (`ctx.database()`), `ctx.emit()` pour pousser des évènements, `ctx.set_notice()` pour afficher un avertissement sous le module, et `ctx.call_module()` pour appeler l'action d'un autre module. Une dépendance peut être limitée à un bureau : `Requirement.binary("wl-paste", sessions=("wayland",), families=("kde", "wlroots"))`. `saturn/modules/clean_url/` sert d'exemple.
 
 ## Tests
 

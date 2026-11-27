@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.saturn" path="/org/gnome/shell/extensions/saturn/">
+    <key name="clipboard-history" type="as">
+      <default><![CDATA[['<Super><Shift>v']]]></default>
+      <summary>Raccourci de l'historique du presse-papiers</summary>
+      <description>Ouvre la fenêtre d'historique de Saturn.</description>
+    </key>
+  </schema>
+</schemalist>

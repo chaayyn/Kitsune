@@ -128,16 +128,27 @@ export class DaemonClient {
 }
 
 /**
- * Ouvre la fenêtre de réglages de l'interface Qt : on la réveille si elle
- * tourne déjà, sinon on la lance.
+ * Demande quelque chose à l'interface Qt. Si elle ne tourne pas, D-Bus la lance
+ * (activation installée par scripts/install.sh) ; à défaut, on lance `saturn`.
  */
-export async function openSettings(moduleId = '') {
+async function callUi(method, params, fallbackArgv) {
     try {
-        await callSession(UI_BUS_NAME, UI_OBJECT_PATH, UI_INTERFACE, 'OpenSettings',
-            new GLib.Variant('(s)', [moduleId]));
+        await callSession(UI_BUS_NAME, UI_OBJECT_PATH, UI_INTERFACE, method, params,
+            Gio.DBusCallFlags.NONE);
     } catch {
-        spawn(moduleId ? ['saturn', '--settings', moduleId] : ['saturn', '--settings']);
+        spawn(fallbackArgv);
     }
+}
+
+/** Ouvre la fenêtre de réglages (sur un module précis si `moduleId` est donné). */
+export function openSettings(moduleId = '') {
+    return callUi('OpenSettings', new GLib.Variant('(s)', [moduleId]),
+        moduleId ? ['saturn', '--settings', moduleId] : ['saturn', '--settings']);
+}
+
+/** Ouvre la fenêtre d'historique du presse-papiers. */
+export function openClipboard() {
+    return callUi('OpenClipboard', null, ['saturn', '--clipboard']);
 }
 
 /** Cherche un exécutable dans le PATH, puis dans ~/.local/bin (installé par scripts/install.sh). */

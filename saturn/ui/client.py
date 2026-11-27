@@ -18,6 +18,7 @@ from typing import Any
 from gi.repository import Gio, GLib
 
 from saturn import BUS_NAME, INTERFACE, OBJECT_PATH
+from saturn.variant import vardict
 
 log = logging.getLogger(__name__)
 
@@ -177,6 +178,21 @@ class DaemonClient:
         on_error: ErrorCallback | None = None,
     ) -> None:
         self.call("ResetSetting", GLib.Variant("(ss)", (module_id, key)), on_result, on_error)
+
+    def call_action(
+        self,
+        module_id: str,
+        action: str,
+        params: dict[str, Any] | None = None,
+        on_result: ResultCallback | None = None,
+        on_error: ErrorCallback | None = None,
+    ) -> None:
+        self.call(
+            "CallAction",
+            GLib.Variant("(ssa{sv})", (module_id, action, vardict(params or {}))),
+            on_result,
+            on_error,
+        )
 
     # -- présence et signaux ------------------------------------------------------------
 

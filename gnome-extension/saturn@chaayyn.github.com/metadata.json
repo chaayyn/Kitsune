@@ -4,5 +4,6 @@
   "description": "Saturn dans la barre du haut : modules, état du démon et accès aux réglages.",
   "shell-version": ["50", "51"],
   "url": "https://github.com/chaayyn/Kitsune",
-  "version": 1
+  "settings-schema": "org.gnome.shell.extensions.saturn",
+  "version": 2
 }

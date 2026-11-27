@@ -202,7 +202,14 @@ def bus(isolated_xdg: Path):
 
 
 def spawn_daemon(address: str, *args: str) -> subprocess.Popen[str]:
-    env = dict(os.environ, DBUS_SESSION_BUS_ADDRESS=address, PYTHONPATH=str(ROOT))
+    # Bureau fixe pour des tests reproductibles : GNOME sous Wayland.
+    env = dict(
+        os.environ,
+        DBUS_SESSION_BUS_ADDRESS=address,
+        PYTHONPATH=str(ROOT),
+        XDG_CURRENT_DESKTOP="GNOME",
+        XDG_SESSION_TYPE="wayland",
+    )
     return subprocess.Popen(
         [sys.executable, "-m", "saturn", "--verbose", *args],
         env=env,

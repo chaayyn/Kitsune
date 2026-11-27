@@ -333,7 +333,7 @@ Window {
                             // Dépendances manquantes ou erreur de démarrage.
                             Rectangle {
                                 readonly property bool missing: (win.current.missing || []).length > 0
-                                visible: missing || (win.current.error || "").length > 0
+                                visible: missing || (win.current.error || "").length > 0 || (win.current.notice || "").length > 0
                                 Layout.fillWidth: true
                                 Layout.topMargin: 22
                                 implicitHeight: notice.implicitHeight + 28
@@ -347,7 +347,7 @@ Window {
                                     anchors.margins: 14
                                     text: parent.missing
                                           ? "Dépendances manquantes : " + win.current.missing.join(", ")
-                                          : (win.current.error || "")
+                                          : (win.current.error || win.current.notice || "")
                                     color: Theme.text
                                     font.family: Theme.monoFont
                                     font.pixelSize: 11

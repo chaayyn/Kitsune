@@ -19,7 +19,7 @@ from PySide6.QtGui import QCursor, QGuiApplication
 
 from saturn import paths
 from saturn.ui.client import CallError, DaemonClient
-from saturn.ui.models import ModuleListModel, SettingsModel, module_status
+from saturn.ui.models import ClipboardModel, ModuleListModel, SettingsModel, module_status
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +82,9 @@ class Backend(QObject):
     panelToggleRequested = Signal()
     panelShowRequested = Signal()
     settingsRequested = Signal(str)
+    clipboardRequested = Signal()
+    clipboardCopied = Signal()
+    clipboardStateChanged = Signal()
     notify = Signal(str, str)  # message, niveau ("error" ou "info")
 
     def __init__(self, client: DaemonClient, parent: QObject | None = None) -> None:
@@ -89,6 +92,11 @@ class Backend(QObject):
         self.client = client
         self._modules = ModuleListModel(self)
         self._settings = SettingsModel(self)
+        self._clipboard = ClipboardModel(self)
+        self._clip_query = ""
+        self._clip_total = 0
+        self._clip_visible = False
+        self._clip_was_active = False
         self._connected = False
         self._starting = False
         self._version = ""
@@ -98,10 +106,14 @@ class Backend(QObject):
         self._start_timer.timeout.connect(self._on_start_timeout)
         self._modules.dataChanged.connect(self._on_modules_changed)
         self._modules.modelReset.connect(self._on_modules_changed)
+        self._modules.dataChanged.connect(self.clipboardStateChanged)
+        self._modules.modelReset.connect(self.clipboardStateChanged)
+        self._modules.rowsInserted.connect(self.clipboardStateChanged)
 
         client.on_available_changed = self._on_available_changed
         client.on_module_changed = self._on_module_changed
         client.on_setting_changed = self._on_setting_changed
+        client.on_module_event = self._on_module_event
         if client.available:
             self._on_available_changed(True)
 
@@ -143,6 +155,28 @@ class Backend(QObject):
     def currentModule(self) -> dict[str, Any]:
         return self._modules.module(self._current_id) or {}
 
+    @Property(QObject, constant=True)
+    def clipboard(self) -> ClipboardModel:
+        return self._clipboard
+
+    @Property(bool, notify=clipboardStateChanged)
+    def clipboardActive(self) -> bool:
+        module = self._modules.module("clipboard")
+        return bool(module and module["status"] == "running")
+
+    @Property(bool, notify=clipboardStateChanged)
+    def clipboardInstalled(self) -> bool:
+        return self._modules.module("clipboard") is not None
+
+    @Property(str, notify=clipboardStateChanged)
+    def clipboardNotice(self) -> str:
+        module = self._modules.module("clipboard") or {}
+        return str(module.get("notice") or module.get("error") or "")
+
+    @Property(int, notify=clipboardStateChanged)
+    def clipboardTotal(self) -> int:
+        return self._clip_total
+
     @Property(bool, constant=True)
     def canPosition(self) -> bool:
         """Sous Wayland, seule le compositeur place les fenêtres."""
@@ -166,6 +200,50 @@ class Backend(QObject):
         if target:
             self.selectModule(target)
         self.settingsRequested.emit(target)
+
+    # -- presse-papiers ----------------------------------------------------------------
+
+    @Slot()
+    def openClipboard(self) -> None:
+        self.clipboardRequested.emit()
+        self.searchClipboard(self._clip_query)
+
+    @Slot(bool)
+    def setClipboardVisible(self, visible: bool) -> None:
+        self._clip_visible = visible
+
+    @Slot(str)
+    def searchClipboard(self, query: str) -> None:
+        self._clip_query = query
+        if not (self._connected and self.clipboardActive):
+            self._clipboard.clear()
+            return
+
+        def done(result: dict[str, Any]) -> None:
+            if query == self._clip_query:
+                self._clipboard.load(result.get("items", []))
+                self._clip_total = int(result.get("total", 0))
+                self.clipboardStateChanged.emit()
+
+        self.client.call_action("clipboard", "list", {"query": query, "limit": 200}, done, self._report)
+
+    @Slot(int)
+    def copyEntry(self, entry_id: int) -> None:
+        self.client.call_action(
+            "clipboard", "copy", {"id": entry_id}, lambda _r: self.clipboardCopied.emit(), self._report
+        )
+
+    @Slot(int, bool)
+    def pinEntry(self, entry_id: int, pinned: bool) -> None:
+        self.client.call_action("clipboard", "pin", {"id": entry_id, "pinned": pinned}, None, self._report)
+
+    @Slot(int)
+    def deleteEntry(self, entry_id: int) -> None:
+        self.client.call_action("clipboard", "delete", {"id": entry_id}, None, self._report)
+
+    @Slot()
+    def clearClipboard(self) -> None:
+        self.client.call_action("clipboard", "clear", {"keep_pinned": True}, None, self._report)
 
     @Slot()
     def quit(self) -> None:
@@ -269,8 +347,18 @@ class Backend(QObject):
         if module_id == self._current_id:
             self._settings.set_value(key, value)
 
+    def _on_module_event(self, module_id: str, event: str, _data: dict[str, Any]) -> None:
+        if module_id == "clipboard" and event == "history-changed" and self._clip_visible:
+            self.searchClipboard(self._clip_query)
+
     def _on_modules_changed(self, *_args: Any) -> None:
         self.currentModuleChanged.emit()
+        # Le module presse-papiers vient de démarrer (ou de s'arrêter) : on recharge la fenêtre.
+        active = self.clipboardActive
+        if active != self._clip_was_active:
+            self._clip_was_active = active
+            if self._clip_visible:
+                self.searchClipboard(self._clip_query)
 
     def _on_start_timeout(self) -> None:
         if not self._connected:

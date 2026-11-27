@@ -14,6 +14,7 @@ Item {
     required property bool available
     required property bool pending
     required property string error
+    required property string notice
 
     // Progression d'apparition du panneau (0 → 1), décalée selon l'index.
     property real reveal: 1
@@ -72,8 +73,8 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: row.status === "error" && row.error ? row.error : row.description
-                color: row.status === "error" ? Theme.danger : Theme.textMuted
+                text: row.status === "error" && row.error ? row.error : (row.notice || row.description)
+                color: row.status === "error" || row.notice ? Theme.danger : Theme.textMuted
                 font.family: Theme.displayFont
                 font.pixelSize: 12
                 elide: Text.ElideRight

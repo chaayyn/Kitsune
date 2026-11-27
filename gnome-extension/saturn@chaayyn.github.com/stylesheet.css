@@ -401,3 +401,77 @@
   height: 1px;
   background-color: #e8b44a;
 }
+
+/* -- outils rapides : tuiles et nuancier ---------------------------------------- */
+
+.saturn-tools {
+  padding: 8px 14px 10px;
+}
+
+.saturn-tiles {
+  spacing: 8px;
+}
+
+.saturn-tile {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: transparent;
+  transition-duration: 200ms;
+}
+
+.saturn-tile:hover,
+.saturn-tile:focus {
+  background-color: #18181b;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.saturn-tile:active {
+  border-color: #e8b44a;
+}
+
+.saturn-tile-eyebrow,
+.saturn-tile-hint {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 7pt;
+  letter-spacing: 1.2px;
+  color: #5a5853;
+}
+
+.saturn-tile:hover .saturn-tile-eyebrow {
+  color: #e8b44a;
+}
+
+.saturn-tile-title {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 12.5pt;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: #f2efe8;
+  margin: 6px 0 2px;
+}
+
+.saturn-tile-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background-color: #e8b44a;
+}
+
+.saturn-swatches {
+  spacing: 8px;
+  margin-top: 10px;
+}
+
+.saturn-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition-duration: 200ms;
+}
+
+.saturn-swatch:hover,
+.saturn-swatch:focus {
+  border: 2px solid #f2efe8;
+}

@@ -1,9 +1,10 @@
-"""Faux services d'énergie pour les tests du module « Rester éveillé ».
+"""Faux services de bureau pour les tests (Rester éveillé, Mode nettoyage, Pipette).
 
 Lancé en sous-processus sur un bus de test (qui sert aussi de bus système) :
 gestionnaire de session GNOME (sauf ``--no-gnome``), org.freedesktop.ScreenSaver,
 systemd-logind et UPower. ``org.saturn.Test1.State`` renvoie, en JSON, les
-inhibitions en cours ; ``SetBattery`` simule la batterie.
+inhibitions en cours ; ``SetBattery`` simule la batterie. ``--pick #RRGGBB`` (ou
+``--pick cancel``) ajoute le portail ``Screenshot.PickColor``.
 """
 
 from __future__ import annotations
@@ -53,6 +54,11 @@ XML = """
     <method name="Close"/>
     <signal name="Response"><arg type="u"/><arg type="a{sv}"/></signal>
   </interface>
+  <interface name="org.freedesktop.portal.Screenshot">
+    <method name="PickColor">
+      <arg type="s" direction="in"/><arg type="a{sv}" direction="in"/><arg type="o" direction="out"/>
+    </method>
+  </interface>
   <interface name="org.saturn.Test1">
     <method name="State"><arg type="s" direction="out"/></method>
     <method name="SetBattery">
@@ -66,6 +72,7 @@ NODE = Gio.DBusNodeInfo.new_for_xml(XML)
 state: dict[str, dict[str, object]] = {"gnome": {}, "screensaver": {}, "logind": {}, "portal": {}}
 #: --portal ok : inhibitions acceptées ; --portal fail : le service du portail échoue.
 PORTAL = sys.argv[sys.argv.index("--portal") + 1] if "--portal" in sys.argv else ""
+PICK = sys.argv[sys.argv.index("--pick") + 1] if "--pick" in sys.argv else ""
 battery = {"on_battery": False, "percentage": 80.0}
 counter = iter(range(1, 1_000_000))
 
@@ -127,6 +134,22 @@ def on_call(conn, _sender, path, interface, method, params, invocation) -> None:
             inv.return_value(None)
 
         ids.append(conn.register_object(handle, iface("org.freedesktop.portal.Request"), on_request, None, None))
+    elif interface == "org.freedesktop.portal.Screenshot":
+        _window, options = args
+        sender = invocation.get_sender().lstrip(":").replace(".", "_")
+        handle = f"/org/freedesktop/portal/desktop/request/{sender}/{options['handle_token']}"
+        invocation.return_value(GLib.Variant("(o)", (handle,)))
+
+        def respond() -> bool:
+            if PICK == "cancel":
+                result = GLib.Variant("(ua{sv})", (1, {}))
+            else:
+                rgb = tuple(int(PICK[i:i + 2], 16) / 255 for i in (1, 3, 5))
+                result = GLib.Variant("(ua{sv})", (0, {"color": GLib.Variant("(ddd)", rgb)}))
+            conn.emit_signal(None, handle, "org.freedesktop.portal.Request", "Response", result)
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(150, respond)  # l'utilisateur vise
     elif interface == "org.saturn.Test1" and method == "State":
         invocation.return_value(GLib.Variant("(s)", (json.dumps(state),)))
     elif interface == "org.saturn.Test1" and method == "SetBattery":
@@ -163,12 +186,14 @@ def main() -> None:
         objects.append(("/org/gnome/SessionManager", "org.gnome.SessionManager"))
     if PORTAL:
         objects.append(("/org/freedesktop/portal/desktop", "org.freedesktop.portal.Inhibit"))
+    if PICK:
+        objects.append(("/org/freedesktop/portal/desktop", "org.freedesktop.portal.Screenshot"))
     for path, name in objects:
         conn.register_object(path, iface(name), on_call, on_get, None)
     names = ["org.freedesktop.ScreenSaver", "org.freedesktop.login1", "org.freedesktop.UPower"]
     if gnome:
         names.append("org.gnome.SessionManager")
-    if PORTAL:
+    if PORTAL or PICK:
         names.append("org.freedesktop.portal.Desktop")
     for name in names:
         conn.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",

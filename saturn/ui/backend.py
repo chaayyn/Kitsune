@@ -105,6 +105,7 @@ class Backend(QObject):
     noteExported = Signal(str)
     awakeChanged = Signal()
     cleaningChanged = Signal()
+    pickerChanged = Signal()
     notify = Signal(str, str)  # message, niveau ("error" ou "info")
 
     def __init__(self, client: DaemonClient, parent: QObject | None = None) -> None:
@@ -128,6 +129,9 @@ class Backend(QObject):
         self._awake_was_running = False
         self._cleaning: dict[str, Any] = {}
         self._cleaning_was_running = False
+        self._colors: list[str] = []
+        self._picking_from_panel = False
+        self._picker_was_running = False
         # Filet de sécurité : si le démon ne dit plus rien, le voile tombe quand même.
         self._cleaning_safety = QTimer(self, singleShot=True)
         self._cleaning_safety.timeout.connect(lambda: self._set_cleaning({}))
@@ -147,6 +151,7 @@ class Backend(QObject):
             signal.connect(self.scratchpadStateChanged)
             signal.connect(self.awakeChanged)
             signal.connect(self.cleaningChanged)
+            signal.connect(self.pickerChanged)
 
         client.on_available_changed = self._on_available_changed
         client.on_module_changed = self._on_module_changed
@@ -292,6 +297,16 @@ class Backend(QObject):
     @Property(bool, notify=cleaningChanged)
     def cleaningPointerBlocked(self) -> bool:
         return bool(self._cleaning.get("block_pointer", False))
+
+    @Property(bool, notify=pickerChanged)
+    def pickerAvailable(self) -> bool:
+        module = self._modules.module("color_picker")
+        return bool(self._connected and module and module["status"] == "running")
+
+    @Property("QStringList", notify=pickerChanged)
+    def pickerColors(self) -> list[str]:
+        """Derniers prélèvements, du plus récent au plus ancien (HEX)."""
+        return list(self._colors)
 
     @Property(bool, constant=True)
     def canPosition(self) -> bool:
@@ -495,6 +510,54 @@ class Backend(QObject):
             self._awake = {}
             self.awakeChanged.emit()
 
+    # -- pipette ------------------------------------------------------------------------
+
+    @Slot()
+    def pickColor(self) -> None:
+        """Le panneau se ferme pour laisser viser ; il revient avec le résultat."""
+        self._picking_from_panel = True
+        self.client.call_action("color_picker", "pick", {}, None, self._report)
+
+    @Slot(str)
+    def copyColor(self, hex_value: str) -> None:
+        def done(result: dict[str, Any]) -> None:
+            self.notify.emit(f"{result['text']} copié", "info")
+
+        def failed(_error: CallError) -> None:
+            # Sans relais du démon (GNOME sans l'extension), la fenêtre au premier plan peut copier.
+            QGuiApplication.clipboard().setText(hex_value)
+            self.notify.emit(f"{hex_value} copié", "info")
+
+        self.client.call_action("color_picker", "copy", {"hex": hex_value}, done, failed)
+
+    def _on_picked(self, data: dict[str, Any]) -> None:
+        from_panel, self._picking_from_panel = self._picking_from_panel, False
+        status = data.get("status")
+        if status == "error":
+            self.notify.emit(str(data.get("message", "")), "error")
+        if status != "ok" or not from_panel:
+            return
+        self.panelShowRequested.emit()
+        text = str(data.get("text") or data.get("hex"))
+        if data.get("copied"):
+            self.notify.emit(f"{text} copié", "info")
+        else:
+            QTimer.singleShot(250, lambda: QGuiApplication.clipboard().setText(text))
+            self.notify.emit(f"{text} copié", "info")
+
+    def _load_colors(self) -> None:
+        if not self.pickerAvailable:
+            if self._colors:
+                self._colors = []
+                self.pickerChanged.emit()
+            return
+
+        def listed(result: dict[str, Any]) -> None:
+            self._colors = [str(color["hex"]) for color in result.get("colors", [])]
+            self.pickerChanged.emit()
+
+        self.client.call_action("color_picker", "list", {}, listed, None)
+
     # -- mode nettoyage ----------------------------------------------------------------
 
     @Slot()
@@ -659,6 +722,10 @@ class Backend(QObject):
             self._reload_notes()
             if int(data.get("id", -1)) == self._current_note:
                 self._load_note(self._current_note)
+        elif module_id == "color_picker" and event == "picked":
+            self._on_picked(data)
+        elif module_id == "color_picker" and event == "history-changed":
+            self._load_colors()
         elif module_id == "cleaning" and event == "state-changed":
             self._set_cleaning(data)
         elif module_id == "keep_awake" and event == "state-changed":
@@ -683,6 +750,10 @@ class Backend(QObject):
         if awake != self._awake_was_running:
             self._awake_was_running = awake
             self._refresh_awake()
+        picker = self.pickerAvailable
+        if picker != self._picker_was_running:
+            self._picker_was_running = picker
+            self._load_colors()
         cleaning = self.cleaningAvailable
         if cleaning != self._cleaning_was_running:
             self._cleaning_was_running = cleaning

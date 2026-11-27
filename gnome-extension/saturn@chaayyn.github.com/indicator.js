@@ -13,6 +13,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {AwakeItem, MODULE_ID as AWAKE_ID, STOP_MESSAGES} from './awake.js';
 import {CleaningOverlay, MODULE_ID as CLEANING_ID} from './cleaning.js';
+import {ToolsItem, swatchIcon} from './tools.js';
+
+const PICKER_ID = 'color_picker';
 import {ClipboardBridge} from './clipboard.js';
 import {DaemonClient, openClipboard, openScratchpad, openSettings} from './daemon.js';
 
@@ -251,18 +254,15 @@ class SaturnIndicator extends PanelMenu.Button {
         this._awakeSeparator = new PopupMenu.PopupSeparatorMenuItem();
         this.menu.addMenuItem(this._awakeSeparator);
 
-        // Mode nettoyage : une ligne qui ferme le menu et pose le voile.
-        this._cleaningItem = new PopupMenu.PopupBaseMenuItem({style_class: 'saturn-action-row'});
-        const cleaningText = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, x_expand: true});
-        cleaningText.add_child(label('Mode nettoyage', 'saturn-module-name'));
-        this._cleaningHint = label('', 'saturn-action-hint');
-        cleaningText.add_child(this._cleaningHint);
-        this._cleaningItem.add_child(cleaningText);
-        this._cleaningItem.add_child(label('↗', 'saturn-action-arrow'));
-        this._cleaningItem.connect('activate', () => this._startCleaning());
-        this.menu.addMenuItem(this._cleaningItem);
-        this._cleaningSeparator = new PopupMenu.PopupSeparatorMenuItem();
-        this.menu.addMenuItem(this._cleaningSeparator);
+        // Outils rapides : pipette et mode nettoyage côte à côte, puis le nuancier.
+        this._tools = new ToolsItem({
+            onPick: () => this.pickColor(),
+            onClean: () => this._startCleaning(),
+            onCopy: hex => this._copyColor(hex),
+        });
+        this.menu.addMenuItem(this._tools);
+        this._toolsSeparator = new PopupMenu.PopupSeparatorMenuItem();
+        this.menu.addMenuItem(this._toolsSeparator);
 
         // Liste des modules.
         // Liste des modules dans une zone qui défile : le menu tient sur l'écran.
@@ -346,6 +346,8 @@ class SaturnIndicator extends PanelMenu.Button {
             this._version = version;
             this._rebuild(modules);
             this._syncCleaning();
+            if (this._items.has(PICKER_ID))
+                this._loadColors();
         } catch (error) {
             logError(error, 'Saturn : lecture des modules impossible');
         }
@@ -397,6 +399,10 @@ class SaturnIndicator extends PanelMenu.Button {
     // -- rester éveillé ------------------------------------------------------------
 
     _onModuleEvent(id, event, data) {
+        if (id === PICKER_ID) {
+            this._onPickerEvent(event, data);
+            return;
+        }
         if (id === CLEANING_ID && event === 'state-changed') {
             this._applyCleaning(data);
             return;
@@ -451,6 +457,47 @@ class SaturnIndicator extends PanelMenu.Button {
             this._icon.remove_style_class_name('saturn-panel-icon-awake');
     }
 
+    // -- pipette -------------------------------------------------------------------
+
+    /** Lance un prélèvement (aussi appelé par le raccourci clavier). */
+    async pickColor() {
+        this.menu.close();
+        try {
+            await this._client.callAction(PICKER_ID, 'pick');
+        } catch (error) {
+            Main.notifyError('Saturn', error.message);
+        }
+    }
+
+    async _copyColor(hex) {
+        try {
+            const {text} = await this._client.callAction(PICKER_ID, 'copy', {hex: new GLib.Variant('s', hex)});
+            Main.osdWindowManager.showOne(Main.layoutManager.primaryIndex, swatchIcon(hex), `${text} copié`, null);
+        } catch (error) {
+            Main.notifyError('Saturn', error.message);
+        }
+    }
+
+    _onPickerEvent(event, data) {
+        if (event === 'history-changed') {
+            this._loadColors();
+        } else if (event === 'picked' && data.status === 'ok') {
+            const label = data.copied ? `${data.text} copié` : data.hex;
+            Main.osdWindowManager.showOne(Main.layoutManager.primaryIndex, swatchIcon(data.hex), label, null);
+        } else if (event === 'picked' && data.status === 'error') {
+            Main.notifyError('Saturn', data.message);
+        }
+    }
+
+    async _loadColors() {
+        try {
+            const {colors} = await this._client.callAction(PICKER_ID, 'list');
+            this._tools.setColors(colors);
+        } catch (error) {
+            logError(error, 'Saturn : nuancier illisible');
+        }
+    }
+
     // -- mode nettoyage ------------------------------------------------------------
 
     _applyCleaning(state) {
@@ -483,8 +530,6 @@ class SaturnIndicator extends PanelMenu.Button {
         const module = this._items.get(CLEANING_ID)?.module;
         const running = (this._client?.available ?? false) && module !== undefined &&
             moduleStatus(module) === 'running';
-        this._cleaningItem.visible = running;
-        this._cleaningSeparator.visible = running;
         if (!running) {
             this._cleaning.hide();
             return;
@@ -496,7 +541,7 @@ class SaturnIndicator extends PanelMenu.Button {
             ]);
             this._applyCleaning(state);
             const pointer = settings.block_pointer ? 'CLAVIER ET SOURIS' : 'CLAVIER';
-            this._cleaningHint.text = `${settings.duration} S  ·  ${pointer} BLOQUÉ${settings.block_pointer ? 'S' : ''}`;
+            this._tools.setCleaningHint(`${settings.duration} S  ·  ${pointer}`);
         } catch (error) {
             logError(error, 'Saturn : état du mode nettoyage illisible');
         }
@@ -543,8 +588,10 @@ class SaturnIndicator extends PanelMenu.Button {
         this._clipboard?.setActive(clipboardOn && this._environment.session === 'wayland');
         const cleaning = this._items.get(CLEANING_ID)?.module;
         const cleaningOn = online && cleaning !== undefined && moduleStatus(cleaning) === 'running';
-        this._cleaningItem.visible = cleaningOn;
-        this._cleaningSeparator.visible = cleaningOn;
+        const picker = this._items.get(PICKER_ID)?.module;
+        const pickerOn = online && picker !== undefined && moduleStatus(picker) === 'running';
+        this._tools.setAvailable(pickerOn, cleaningOn);
+        this._toolsSeparator.visible = pickerOn || cleaningOn;
         if (!cleaningOn)
             this._cleaning?.hide();
         this._syncAwake();

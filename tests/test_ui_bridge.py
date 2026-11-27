@@ -413,7 +413,7 @@ def test_backend_keep_awake_flow(qt_app, bus, monkeypatch) -> None:
     address, connection = bus
     monkeypatch.setenv("DBUS_SYSTEM_BUS_ADDRESS", address)  # faux logind / UPower sur le bus de test
     fakes = subprocess.Popen(
-        [sys.executable, str(Path(__file__).with_name("fake_power_services.py"))],
+        [sys.executable, str(Path(__file__).with_name("fake_desktop_services.py"))],
         env=dict(os.environ, DBUS_SESSION_BUS_ADDRESS=address),
     )
     client = DaemonClient(connection)
@@ -485,4 +485,45 @@ def test_backend_cleaning_flow(qt_app, bus) -> None:
     finally:
         assert stop_process(process) == 0, process.stderr.read()
     pump(lambda: not backend.cleaningActive and not backend.cleaningAvailable)
+    client.close()
+
+
+@needs_dbus
+def test_backend_color_picker_flow(qt_app, bus, monkeypatch) -> None:
+    import subprocess
+    import sys
+
+    address, connection = bus
+    monkeypatch.setenv("DBUS_SYSTEM_BUS_ADDRESS", address)
+    fakes = subprocess.Popen(
+        [sys.executable, str(Path(__file__).with_name("fake_desktop_services.py")), "--pick", "#3366CC"],
+        env=dict(os.environ, DBUS_SESSION_BUS_ADDRESS=address),
+    )
+    client = DaemonClient(connection)
+    backend = Backend(client)
+    messages: list[str] = []
+    shown: list[bool] = []
+    backend.notify.connect(lambda message, _level: messages.append(message))
+    backend.panelShowRequested.connect(lambda: shown.append(True))
+    process = None
+    try:
+        time.sleep(0.3)
+        process = spawn_daemon(address)
+        wait_for_owner(connection)
+        pump(lambda: backend.pickerAvailable)
+        assert backend.pickerColors == []
+
+        backend.pickColor()
+        pump(lambda: backend.pickerColors == ["#3366CC"] and messages)
+        assert shown and messages[-1] == "#3366CC copié"
+        # Pas d'extension GNOME sur ce bus : c'est l'interface qui copie.
+        pump(lambda: QGuiApplication.clipboard().text() == "#3366CC")
+
+        backend.copyColor("#3366CC")
+        pump(lambda: len(messages) == 2)
+    finally:
+        if process is not None:
+            assert stop_process(process) == 0, process.stderr.read()
+        stop_process(fakes)
+    pump(lambda: not backend.pickerAvailable and backend.pickerColors == [])
     client.close()

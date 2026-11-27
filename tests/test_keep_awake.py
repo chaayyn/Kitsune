@@ -196,7 +196,7 @@ def test_activate_on_start(awake: ModuleManager, run) -> None:
 
 # -- bout en bout : vrai démon, faux services d'énergie sur le bus de test ----------------
 
-FAKE = Path(__file__).with_name("fake_power_services.py")
+FAKE = Path(__file__).with_name("fake_desktop_services.py")
 
 
 def _fake_state(connection: Gio.DBusConnection) -> dict[str, dict[str, Any]]:

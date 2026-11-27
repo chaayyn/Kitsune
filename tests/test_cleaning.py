@@ -90,7 +90,7 @@ def test_start_stop_and_timeout(pad: ModuleManager, run) -> None:
 
 # -- bout en bout ---------------------------------------------------------------------------
 
-FAKE = Path(__file__).with_name("fake_power_services.py")
+FAKE = Path(__file__).with_name("fake_desktop_services.py")
 
 
 def _own(connection: Gio.DBusConnection, name: str, release: bool = False) -> None:

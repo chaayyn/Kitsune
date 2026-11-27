@@ -42,7 +42,8 @@ export class ClipboardBridge {
         this._eventId = bus.signal_subscribe(BUS_NAME, INTERFACE, 'ModuleEvent', OBJECT_PATH,
             null, Gio.DBusSignalFlags.NONE, (...args) => {
                 const [id, event, data] = args[5].recursiveUnpack();
-                if (id === MODULE_ID && event === 'write' && this._active)
+                // Les autres modules (pipette…) écrivent aussi par ici, même sans historique.
+                if (event === 'write' && (id !== MODULE_ID || this._active))
                     this._write(data);
             });
         this._settingId = bus.signal_subscribe(BUS_NAME, INTERFACE, 'SettingChanged', OBJECT_PATH,

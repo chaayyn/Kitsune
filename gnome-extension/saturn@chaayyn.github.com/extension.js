@@ -26,16 +26,19 @@ export default class SaturnExtension extends Extension {
 
         // Raccourcis (modifiables dans le schéma GSettings de l'extension).
         this._settings = this.getSettings();
-        for (const [key, open] of [['clipboard-history', openClipboard], ['scratchpad', openScratchpad]]) {
+        const pick = () => this._indicator.pickColor();
+        for (const [key, open] of [['clipboard-history', openClipboard], ['scratchpad', openScratchpad],
+            ['color-picker', pick]]) {
             Main.wm.addKeybinding(key, this._settings, Meta.KeyBindingFlags.NONE,
                 Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW,
-                () => open().catch(error => Main.notifyError('Saturn', error.message)));
+                () => Promise.resolve(open()).catch(error => Main.notifyError('Saturn', error.message)));
         }
     }
 
     disable() {
         Main.wm.removeKeybinding('clipboard-history');
         Main.wm.removeKeybinding('scratchpad');
+        Main.wm.removeKeybinding('color-picker');
         this._settings = null;
         if (this._nameId) {
             Gio.bus_unown_name(this._nameId);

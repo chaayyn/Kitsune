@@ -2,7 +2,7 @@
 
 Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-> État : étape 7. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et cinq modules (Clean URL, Presse-papiers, Bloc-notes, Rester éveillé, Mode nettoyage) fonctionnent.
+> État : étape 8. Le démon, le système de modules, l'API D-Bus, l'interface Qt/QML, l'extension GNOME Shell et six modules (Clean URL, Presse-papiers, Bloc-notes, Rester éveillé, Mode nettoyage, Pipette) fonctionnent.
 
 ## Architecture
 
@@ -25,6 +25,7 @@ gnome-extension/saturn@chaayyn.github.com (GNOME Shell 50+, GJS)
 ├── indicator.js    menu ancré : modules, interrupteurs, état du démon
 ├── awake.js        « Rester éveillé » en tête du menu : interrupteur et durées
 ├── cleaning.js     voile du mode nettoyage (prise modale du Shell)
+├── tools.js        tuiles Pipette / Nettoyage et nuancier du menu
 ├── clipboard.js    relais du presse-papiers sous GNOME Wayland
 └── daemon.js       client D-Bus de saturnd, ouverture des fenêtres Qt
 ```
@@ -65,7 +66,7 @@ python3 -m saturn.ui               # ou `saturn` après `pip install -e .`
 - **Panneau** (clic sur l'icône) : modules par catégorie, état et interrupteur. Il se ferme quand il perd le focus ou avec Échap. Sous Wayland, c'est le compositeur qui le place (souvent au centre) : une appli ne peut pas se positionner elle-même.
 - **Réglages** : liste des modules à gauche, détail et réglages générés à partir du schéma du démon à droite. Tout se met à jour en direct par les signaux D-Bus.
 - **Démon arrêté** : l'interface l'indique et propose de lancer `saturnd` (journal dans `~/.local/state/saturn/saturnd.log`).
-- **Une seule instance** : relancer `saturn` ouvre le panneau de l'instance existante (`--panel`, `--settings [module]`, `--clipboard`, `--scratchpad`, `--clean`).
+- **Une seule instance** : relancer `saturn` ouvre le panneau de l'instance existante (`--panel`, `--settings [module]`, `--clipboard`, `--scratchpad`, `--clean`, `--pick`).
 - **Polices** : Space Grotesk (titres, livrée dans `assets/fonts/` sous licence OFL) et JetBrains Mono (valeurs, paquet `fonts-jetbrains-mono`). Sans elles, repli sur Adwaita Sans / Fira Code ; `SATURN_DISPLAY_FONT` et `SATURN_MONO_FONT` imposent une autre famille installée.
 - **Animations** : expo-out, 200 à 450 ms, coupées si GNOME a désactivé les animations ou si `SATURN_REDUCED_MOTION=1`.
 
@@ -128,6 +129,17 @@ Un voile noir plein écran qui bloque le clavier, le temps d'essuyer l'écran et
 
 Actions : `start` (`seconds`, sinon la durée réglée), `stop`, `status`. Évènement : `state-changed` (`surface` : `shell` ou `ui`, selon qui affiche le voile).
 
+### Pipette
+
+Prélève la couleur d'un point de l'écran et la copie (HEX par défaut, ou RGB, HSL). Actif par défaut.
+
+- **Lancer** : `Super+Maj+C` sous GNOME, tuile « Pipette » du menu ou du panneau, menu de l'icône, ou `saturn --pick`.
+- **Nuancier** : les dernières couleurs (12 par défaut) en pastilles sous les tuiles ; un clic recopie la couleur. Sous GNOME, une bulle affiche la couleur et ce qui a été copié.
+- **Selon le bureau** : portail XDG `Screenshot.PickColor` (GNOME, KDE), sinon `hyprpicker` (Hyprland), `grim` + `slurp` (Sway et autres wlroots) ou `xcolor` (X11). La copie passe par l'extension sous GNOME Wayland, par `wl-copy` sous les autres Wayland, par `xclip` ou `xsel` sous X11.
+- **Réglages** : format copié (`hex`, `rgb`, `hsl` ou `none`), nombre de couleurs gardées.
+
+Actions : `pick` (rend la main tout de suite ; le résultat arrive par l'évènement `picked`, `status` : `ok`, `cancelled` ou `error`), `list`, `copy` (`hex`, `format`), `delete`, `clear`. Évènements : `picked`, `history-changed`, `write`.
+
 ## API D-Bus
 
 Nom `org.saturn.Daemon`, objet `/org/saturn/Daemon`, interface `org.saturn.Daemon1`.
@@ -167,7 +179,7 @@ Le contexte `self.ctx` donne les réglages, l'environnement détecté (`ctx.env`
 python3 -m pytest
 ```
 
-Les tests D-Bus lancent un vrai `saturnd` sur un bus privé (`dbus-daemon` requis) et n'écrivent jamais dans votre `~/.config`. Ce bus sert aussi de bus système : « Rester éveillé » y parle à de faux GNOME, portail, logind et UPower (`tests/fake_power_services.py`), jamais aux vrais. Les tests de l'interface tournent hors écran (`QT_QPA_PLATFORM=offscreen`).
+Les tests D-Bus lancent un vrai `saturnd` sur un bus privé (`dbus-daemon` requis) et n'écrivent jamais dans votre `~/.config`. Ce bus sert aussi de bus système : « Rester éveillé », le mode nettoyage et la pipette y parlent à de faux GNOME, portails, logind et UPower (`tests/fake_desktop_services.py`), jamais aux vrais. Les tests de l'interface tournent hors écran (`QT_QPA_PLATFORM=offscreen`).
 
 ## Licence
 

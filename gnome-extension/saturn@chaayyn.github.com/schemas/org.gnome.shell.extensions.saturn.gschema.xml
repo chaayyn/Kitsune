@@ -11,5 +11,10 @@
       <summary>Raccourci du bloc-notes</summary>
       <description>Ouvre le bloc-notes de Saturn.</description>
     </key>
+    <key name="color-picker" type="as">
+      <default><![CDATA[['<Super><Shift>c']]]></default>
+      <summary>Raccourci de la pipette</summary>
+      <description>Prélève une couleur à l'écran et la copie.</description>
+    </key>
   </schema>
 </schemalist>

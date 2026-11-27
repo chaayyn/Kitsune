@@ -242,3 +242,34 @@ def test_font_selection(qt_app) -> None:
     if FONTS_DIR.is_dir():
         assert "Space Grotesk" in load_bundled_fonts(FONTS_DIR)
         assert DISPLAY_FONTS[0] == "Space Grotesk"
+
+
+@needs_dbus
+def test_tray_icon_hides_while_gnome_extension_runs(qt_app, bus) -> None:
+    from gi.repository import Gio
+
+    from saturn.ui.app import SHELL_BUS_NAME, follow_shell_extension, name_has_owner
+
+    _address, connection = bus
+
+    class FakeTray:
+        visible = True
+
+        def hide(self) -> None:
+            self.visible = False
+
+        def show(self) -> None:
+            self.visible = True
+
+    tray = FakeTray()
+    watch = follow_shell_extension(connection, tray)
+    try:
+        owner = Gio.bus_own_name_on_connection(
+            connection, SHELL_BUS_NAME, Gio.BusNameOwnerFlags.NONE, None, None
+        )
+        pump(lambda: not tray.visible)
+        assert name_has_owner(connection, SHELL_BUS_NAME)
+        Gio.bus_unown_name(owner)
+        pump(lambda: tray.visible)
+    finally:
+        Gio.bus_unwatch_name(watch)

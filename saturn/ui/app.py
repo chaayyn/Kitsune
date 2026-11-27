@@ -22,6 +22,8 @@ from saturn.ui.theme import Theme, load_bundled_fonts
 log = logging.getLogger("saturn.ui")
 
 UI_BUS_NAME = "org.saturn.Ui"
+#: Nom pris par l'extension GNOME Shell de Saturn quand elle est active.
+SHELL_BUS_NAME = "org.saturn.Shell"
 UI_OBJECT_PATH = "/org/saturn/Ui"
 UI_INTERFACE = "org.saturn.Ui1"
 UI_XML = f"""
@@ -157,6 +159,29 @@ def build_tray(app: QApplication, backend: Backend, icon: QIcon) -> QSystemTrayI
     return tray
 
 
+def name_has_owner(connection: Gio.DBusConnection, name: str) -> bool:
+    reply = connection.call_sync(
+        "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "NameHasOwner", GLib.Variant("(s)", (name,)), None, Gio.DBusCallFlags.NONE, -1, None,
+    )
+    return bool(reply.unpack()[0])
+
+
+def follow_shell_extension(connection: Gio.DBusConnection, tray: QSystemTrayIcon) -> int:
+    """Masque l'icône Qt tant que l'extension GNOME de Saturn tient la barre du haut."""
+
+    def appeared(*_args) -> None:
+        log.info("Extension GNOME de Saturn active : icône de notification masquée")
+        tray.hide()
+
+    def vanished(*_args) -> None:
+        tray.show()
+
+    return Gio.bus_watch_name_on_connection(
+        connection, SHELL_BUS_NAME, Gio.BusNameWatcherFlags.NONE, appeared, vanished
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     logging.basicConfig(
@@ -207,7 +232,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     tray = build_tray(app, backend, icon)
-    if tray is None or args.panel:
+    if tray is not None:
+        follow_shell_extension(connection, tray)
+    # Sans icône ni extension GNOME, le panneau est le seul point d'entrée : on l'ouvre.
+    if args.panel or (tray is None and not name_has_owner(connection, SHELL_BUS_NAME)):
         QTimer.singleShot(0, backend.showPanel)
     if args.settings is not None:
         QTimer.singleShot(0, lambda: backend.openSettings(args.settings))

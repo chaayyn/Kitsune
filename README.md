@@ -2,7 +2,7 @@
 
 Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-> État : étape 2. Le démon, le système de modules, l'API D-Bus, un premier module (Clean URL) et l'interface Qt/QML fonctionnent. L'extension GNOME arrive ensuite.
+> État : étape 3. Le démon, le système de modules, l'API D-Bus, un premier module (Clean URL), l'interface Qt/QML et l'extension GNOME Shell fonctionnent.
 
 ## Architecture
 
@@ -19,9 +19,22 @@ saturn (interface PySide6 + QML, aucune logique métier)
 ├── Backend         pont exposé au QML (« Saturn ») + modèles Qt
 ├── Theme           couleurs, polices, durées (« Theme »)
 └── qml/            icône, panneau flottant, fenêtre de réglages
+
+gnome-extension/saturn@chaayyn.github.com (GNOME Shell 50+, GJS)
+├── extension.js    bouton dans la barre du haut, nom org.saturn.Shell
+├── indicator.js    menu ancré : modules, interrupteurs, état du démon
+└── daemon.js       client D-Bus de saturnd, ouverture des réglages Qt
 ```
 
 Données : `~/.config/saturn/` pour les réglages, `~/.local/share/saturn/modules/<id>.db` pour les bases SQLite des modules (créées seulement à la première utilisation).
+
+## Installer
+
+```bash
+./scripts/install.sh      # désinstaller : ./scripts/uninstall.sh
+```
+
+Sans `sudo`, pour l'utilisateur courant : lanceurs `saturnd` et `saturn` dans `~/.local/bin` (ils pointent vers ce dépôt), activation D-Bus de `org.saturn.Daemon` (le démon démarre à la première demande), police Space Grotesk et extension GNOME Shell. Sous GNOME Wayland, l'extension n'est chargée qu'après une déconnexion / reconnexion.
 
 ## Lancer
 
@@ -44,13 +57,19 @@ sudo apt install python3-pyside6.qtquick qml6-module-qtquick qml6-module-qtquick
 python3 -m saturn.ui               # ou `saturn` après `pip install -e .`
 ```
 
-- **Icône** dans la zone de notification (StatusNotifierItem). Sous GNOME, il faut l'extension AppIndicator (`gnome-shell-extension-appindicator`) ; l'extension GNOME de Saturn la remplacera.
+- **Icône** dans la zone de notification (StatusNotifierItem), pour KDE, Hyprland, Sway… Sous GNOME, l'extension de Saturn la remplace : l'icône Qt se masque toute seule tant que l'extension tourne (nom D-Bus `org.saturn.Shell`).
 - **Panneau** (clic sur l'icône) : modules par catégorie, état et interrupteur. Il se ferme quand il perd le focus ou avec Échap. Sous Wayland, c'est le compositeur qui le place (souvent au centre) : une appli ne peut pas se positionner elle-même.
 - **Réglages** : liste des modules à gauche, détail et réglages générés à partir du schéma du démon à droite. Tout se met à jour en direct par les signaux D-Bus.
 - **Démon arrêté** : l'interface l'indique et propose de lancer `saturnd` (journal dans `~/.local/state/saturn/saturnd.log`).
 - **Une seule instance** : relancer `saturn` ouvre le panneau de l'instance existante (`--panel`, `--settings [module]`).
 - **Polices** : Space Grotesk (titres, livrée dans `assets/fonts/` sous licence OFL) et JetBrains Mono (valeurs, paquet `fonts-jetbrains-mono`). Sans elles, repli sur Adwaita Sans / Fira Code ; `SATURN_DISPLAY_FONT` et `SATURN_MONO_FONT` imposent une autre famille installée.
 - **Animations** : expo-out, 200 à 450 ms, coupées si GNOME a désactivé les animations ou si `SATURN_REDUCED_MOTION=1`.
+
+## Extension GNOME Shell
+
+Un bouton Saturn dans la barre du haut, avec un menu ancré dessous : modules par catégorie, état et interrupteur (cliquer sur la ligne bascule le module sans fermer le menu), état du démon et bouton « Réglages » qui ouvre la fenêtre Qt. À l'activation, l'extension démarre `saturnd` par activation D-Bus s'il ne tourne pas ; sinon le menu propose de le lancer.
+
+Elle ne fait que relayer l'API D-Bus du démon : aucune logique métier côté Shell. Pour la tester sans toucher à sa session, on peut lancer un GNOME Shell isolé : `dbus-run-session gnome-shell --headless --wayland --virtual-monitor 1280x800`, avec `XDG_DATA_HOME` / `XDG_CONFIG_HOME` temporaires.
 
 L'interface parle au démon avec Gio plutôt que QtDBus : PySide6 convertit mal les `a{sv}` de l'API, et la boucle Qt sous Linux est une boucle GLib, donc les rappels Gio y sont traités directement.
 

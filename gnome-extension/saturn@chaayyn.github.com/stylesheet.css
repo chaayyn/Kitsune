@@ -1,0 +1,219 @@
+/* Saturn : palette courte (fond, texte, un accent doré), bordures 1 px. */
+
+.saturn-panel-icon {
+  icon-size: 16px;
+}
+
+.saturn-menu .popup-menu-content {
+  background-color: #0b0b0c;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 14px 8px 10px;
+  min-width: 360px;
+  box-shadow: none;
+}
+
+.saturn-menu .popup-separator-menu-item-separator {
+  background-color: rgba(255, 255, 255, 0.1);
+  height: 1px;
+}
+
+.saturn-menu .popup-menu-item {
+  border-radius: 10px;
+  transition-duration: 200ms;
+}
+
+.saturn-menu .popup-menu-item:hover,
+.saturn-menu .popup-menu-item:focus {
+  background-color: #1f1f23;
+}
+
+/* -- typographie ---------------------------------------------------------- */
+
+.saturn-title {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 22pt;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  color: #f2efe8;
+}
+
+.saturn-meta,
+.saturn-eyebrow,
+.saturn-status-label,
+.saturn-counter {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 7.5pt;
+  letter-spacing: 1.2px;
+  color: #5a5853;
+}
+
+.saturn-meta {
+  margin-top: 4px;
+}
+
+.saturn-counter {
+  color: #8d8a84;
+  font-size: 8pt;
+}
+
+.saturn-eyebrow-danger {
+  color: #ff6a55;
+}
+
+/* -- en-tête, sections ---------------------------------------------------- */
+
+.saturn-header {
+  padding: 6px 14px 10px;
+}
+
+.saturn-section {
+  padding: 14px 14px 4px;
+}
+
+/* -- modules -------------------------------------------------------------- */
+
+.saturn-module {
+  padding: 10px 14px;
+  spacing: 14px;
+}
+
+.saturn-module-text {
+  spacing: 3px;
+}
+
+.saturn-module-name {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 11.5pt;
+  font-weight: 500;
+  color: #f2efe8;
+}
+
+.saturn-module-description {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 9pt;
+  color: #8d8a84;
+  max-width: 250px;
+}
+
+.saturn-module:insensitive {
+  color: #5a5853;
+}
+
+/* -- état ----------------------------------------------------------------- */
+
+.saturn-status {
+  spacing: 6px;
+}
+
+.saturn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background-color: #5a5853;
+}
+
+.saturn-status-running .saturn-dot {
+  background-color: #e8b44a;
+}
+
+.saturn-status-running .saturn-status-label {
+  color: #f2efe8;
+}
+
+.saturn-status-error .saturn-dot,
+.saturn-status-unavailable .saturn-dot {
+  background-color: #ff6a55;
+}
+
+/* -- interrupteur ----------------------------------------------------------- */
+
+.saturn-menu .toggle-switch {
+  background-color: #18181b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition-duration: 200ms;
+}
+
+.saturn-menu .toggle-switch:hover {
+  background-color: #1f1f23;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.saturn-menu .toggle-switch:checked {
+  background-color: #e8b44a;
+  border-color: #e8b44a;
+}
+
+.saturn-menu .toggle-switch:checked:hover {
+  background-color: #f3c566;
+}
+
+.saturn-menu .toggle-switch .handle {
+  background-color: #f2efe8;
+}
+
+.saturn-menu .toggle-switch:checked .handle {
+  background-color: #0b0b0c;
+}
+
+/* -- boutons ---------------------------------------------------------------- */
+
+.saturn-button {
+  font-family: JetBrains Mono, Fira Code, monospace;
+  font-size: 8pt;
+  font-weight: 500;
+  letter-spacing: 0.8px;
+  color: #f2efe8;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: transparent;
+  transition-duration: 200ms;
+}
+
+.saturn-button:hover,
+.saturn-button:focus {
+  background-color: #1f1f23;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.saturn-button-primary {
+  color: #0b0b0c;
+  background-color: #e8b44a;
+  border-color: #e8b44a;
+}
+
+.saturn-button-primary:hover,
+.saturn-button-primary:focus {
+  background-color: #f3c566;
+  border-color: #f3c566;
+}
+
+.saturn-button:insensitive {
+  color: #5a5853;
+}
+
+/* -- hors ligne, pied --------------------------------------------------------- */
+
+.saturn-offline {
+  padding: 16px 14px;
+}
+
+.saturn-offline-title {
+  font-family: Space Grotesk, Adwaita Sans, sans-serif;
+  font-size: 18pt;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  color: #f2efe8;
+  margin: 10px 0 8px;
+}
+
+.saturn-offline-hint {
+  font-size: 9.5pt;
+  color: #8d8a84;
+  margin-bottom: 14px;
+}
+
+.saturn-footer {
+  padding: 8px 6px 2px 14px;
+}

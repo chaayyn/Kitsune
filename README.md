@@ -1,148 +1,100 @@
-# Kitsune pour Linux 🦊⚡
+# Saturn
 
-Boîte à outils modulaire, légère et *local-first* (inspirée de Vorssaint) conçue pour les environnements de bureau Linux modernes (**Wayland** et **X11**).
+Boîte à outils modulaire et *local-first* pour les bureaux Linux (GNOME, KDE, Hyprland, Sway…, sous Wayland comme sous X11). Chaque fonction est un module que l'on active ou désactive ; un module désactivé n'est même pas chargé.
 
-Kitsune réside discrètement dans la zone de notification (*system tray* / barre supérieure) et permet d'activer ou désactiver chaque module indépendamment. **Aucune télémétrie, aucune ressource consommée pour les fonctions désactivées.**
+> État : étape 2. Le démon, le système de modules, l'API D-Bus, un premier module (Clean URL) et l'interface Qt/QML fonctionnent. L'extension GNOME arrive ensuite.
 
----
+## Architecture
 
-## 🌟 Fonctionnalités & Modules
+```
+saturnd (Python, asyncio sur la boucle GLib)
+├── ModuleManager   active/désactive les modules, applique les réglages
+├── Registry        lit le MANIFEST de chaque module sans importer son code
+├── Config          ~/.config/saturn/config.json (écriture atomique)
+├── desktop.detect  bureau (gnome / kde / wlroots / other) + session (wayland / x11)
+└── DBusService     org.saturn.Daemon sur le bus de session
 
-| Module | Catégorie | Description | Cible Linux / Dépendance |
-|---|---|---|---|
-| ☕ **Keep Awake** | Énergie | Empêche la mise en veille et l'extinction de l'écran (15m, 30m, 1h, 2h ou illimité). | `systemd-inhibit` / D-Bus |
-| 🔗 **Clean URL** | Presse-papiers | Nettoie automatiquement les paramètres de pistage (`utm_*`, `fbclid`, `gclid`, `si`...) des liens copiés. | Natif Python (`urllib`) |
-| 📋 **Historique Presse-papiers** | Presse-papiers | Historique local SQLite, recherche instantanée en fenêtre flottante, protection contre la mémorisation de secrets / clés privées. | Natif SQLite3 + `QClipboard` |
-| 🎤 **Contrôle Audio & Micro** | Audio | Coupure micro globale en 1 clic et bascule rapide de la sortie audio (casque / haut-parleurs). | PipeWire (`wpctl`) ou PulseAudio (`pactl`) |
-| 📝 **Scratchpad** | Productivité | Bloc-notes éphémère flottant avec sauvegarde automatique locale. | Natif |
-| 🎨 **Color Picker** | Productivité | Pipette de prélèvement de couleur d'écran avec formats HEX/RGB/HSL. | XDG Desktop Portal (Wayland/X11) |
-| ✨ **Mode Nettoyage** | Système | Verrouille temporairement le clavier et l'écran pour les nettoyer sans risque de frappe accidentelle (déverrouillage par maintien d'Échap 3s). | Écran de capture Qt |
-| 📊 **Métriques Système** | Système | Moniteur léger en direct de la charge CPU et RAM (désactivé par défaut). | Lecture directe `/proc/stat` & `/proc/meminfo` |
+saturn (interface PySide6 + QML, aucune logique métier)
+├── DaemonClient    appels et signaux D-Bus via Gio
+├── Backend         pont exposé au QML (« Saturn ») + modèles Qt
+├── Theme           couleurs, polices, durées (« Theme »)
+└── qml/            icône, panneau flottant, fenêtre de réglages
+```
 
----
+Données : `~/.config/saturn/` pour les réglages, `~/.local/share/saturn/modules/<id>.db` pour les bases SQLite des modules (créées seulement à la première utilisation).
 
-## 🏗️ Architecture & Choix Technique
+## Lancer
 
-### Pourquoi Python 3 + PyQt6 ?
-1. **Support Wayland / X11 StatusNotifierItem (SNI)** : Contrairement à GTK4 qui a totalement supprimé la prise en charge native des barres d'état (`GtkStatusIcon`), PyQt6 implémente nativement le protocole D-Bus Freedesktop `StatusNotifierItem` sur Wayland (GNOME avec l'extension AppIndicator, KDE Plasma, Sway, Hyprland via Waybar, etc.) et X11.
-2. **Empreinte mémoire minimale** : Moins de 35 Mo de RAM en cours d'exécution (contrairement aux solutions Electron/Tauri nécessitant un moteur Chromium complet).
-3. **Zéro compilation & Extensibilité immédiate** : Architecture modulaire à base de `BaseModule` permettant à n'importe quel contributeur d'ajouter un module en quelques dizaines de lignes de Python sans chaîne de compilation C/Rust complexe.
-4. **Intégration directe aux standards Linux** :
-   - D-Bus pour les inhibitions de veille et le portail de sélection de couleurs.
-   - PipeWire / WirePlumber (`wpctl`) pour l'audio sans latence.
-   - Données stockées localement selon la norme XDG (`~/.config/kitsune/` et `~/.local/share/kitsune/`).
+Dépendances système (Debian / Kali) : `python3-gi` (PyGObject) et `dbus`.
 
----
-
-## 📋 Prérequis & Dépendances Système
-
-Sur une distribution basée sur Debian/Ubuntu/Kali :
 ```bash
-sudo apt update
-sudo apt install python3 python3-pyqt6
+python3 -m saturn --verbose        # ou `saturnd` après `pip install -e .`
 ```
 
-Outils système recommandés (généralement déjà présents par défaut) :
-- **PipeWire / WirePlumber** (`wpctl`) : pour le module Audio.
-- **systemd** (`systemd-inhibit`) : pour le module Keep Awake.
-- **xdg-desktop-portal** : pour le Color Picker sous Wayland.
-- **libnotify-bin** (`notify-send`) : pour les notifications de bureau.
+`--replace` remplace une instance déjà lancée ; sinon une deuxième instance refuse de démarrer.
 
----
+## Interface
 
-## 🚀 Installation & Lancement
+Dépendances : `python3-pyside6.qtquick` et les modules QML Qt 6.
 
-### Lancement direct
 ```bash
-git clone git@github.com:chaayyn/kitsune-linux.git
-cd kitsune-linux
-python3 run.py
+sudo apt install python3-pyside6.qtquick qml6-module-qtquick qml6-module-qtquick-controls \
+  qml6-module-qtquick-layouts qml6-module-qtquick-window qml6-module-qtquick-templates \
+  qml6-module-qtqml-workerscript fonts-jetbrains-mono
+python3 -m saturn.ui               # ou `saturn` après `pip install -e .`
 ```
 
-### Options en ligne de commande
+- **Icône** dans la zone de notification (StatusNotifierItem). Sous GNOME, il faut l'extension AppIndicator (`gnome-shell-extension-appindicator`) ; l'extension GNOME de Saturn la remplacera.
+- **Panneau** (clic sur l'icône) : modules par catégorie, état et interrupteur. Il se ferme quand il perd le focus ou avec Échap. Sous Wayland, c'est le compositeur qui le place (souvent au centre) : une appli ne peut pas se positionner elle-même.
+- **Réglages** : liste des modules à gauche, détail et réglages générés à partir du schéma du démon à droite. Tout se met à jour en direct par les signaux D-Bus.
+- **Démon arrêté** : l'interface l'indique et propose de lancer `saturnd` (journal dans `~/.local/state/saturn/saturnd.log`).
+- **Une seule instance** : relancer `saturn` ouvre le panneau de l'instance existante (`--panel`, `--settings [module]`).
+- **Polices** : Space Grotesk (titres, livrée dans `assets/fonts/` sous licence OFL) et JetBrains Mono (valeurs, paquet `fonts-jetbrains-mono`). Sans elles, repli sur Adwaita Sans / Fira Code ; `SATURN_DISPLAY_FONT` et `SATURN_MONO_FONT` imposent une autre famille installée.
+- **Animations** : expo-out, 200 à 450 ms, coupées si GNOME a désactivé les animations ou si `SATURN_REDUCED_MOTION=1`.
+
+L'interface parle au démon avec Gio plutôt que QtDBus : PySide6 convertit mal les `a{sv}` de l'API, et la boucle Qt sous Linux est une boucle GLib, donc les rappels Gio y sont traités directement.
+
+## API D-Bus
+
+Nom `org.saturn.Daemon`, objet `/org/saturn/Daemon`, interface `org.saturn.Daemon1`.
+
+| Méthode | Rôle |
+|---|---|
+| `ListModules() → aa{sv}` | tous les modules : `id`, `name`, `description`, `category`, `enabled`, `running`, `available`, `missing`, `error`, `actions` |
+| `GetModule(s) → a{sv}` | un module |
+| `SetModuleEnabled(s, b) → a{sv}` | activer / désactiver (persisté) |
+| `GetSettingsSchema(s) → aa{sv}` | description typée des réglages |
+| `GetSettings(s) → a{sv}` / `SetSetting(s, s, v)` / `ResetSetting(s, s)` | réglages |
+| `CallAction(s, s, a{sv}) → a{sv}` | action propre à un module |
+| `GetEnvironment() → a{sv}` | bureau et session détectés |
+
+Propriété `Version`. Signaux : `ModuleStateChanged(s, a{sv})`, `SettingChanged(s, s, v)`, `ModuleEvent(s, s, a{sv})`. Les erreurs ont des noms `org.saturn.Error.*`.
+
 ```bash
-# Vérifier la détection de l'environnement et des outils disponibles
-python3 run.py --diagnostics
-
-# Ouvrir directement la fenêtre des paramètres et gestion des modules
-python3 run.py --settings
+D() { gdbus call --session -d org.saturn.Daemon -o /org/saturn/Daemon -m org.saturn.Daemon1.$1 "${@:2}"; }
+D ListModules
+D SetModuleEnabled clean_url false
+D CallAction clean_url clean "{'url': <'https://youtu.be/abc?si=xyz'>}"
+D SetSetting clean_url extra_params "<['ref_*']>"
 ```
 
-### Installation globale en mode éditable
+## Écrire un module
+
+Un module est un sous-paquet de `saturn/modules/` :
+
+- `__init__.py` ne contient que le `MANIFEST` (`ModuleInfo` : id, nom, catégorie, réglages, dépendances système). Il est lu même quand le module est désactivé, donc pas d'import lourd ici.
+- l'implémentation (par ex. `module.py`) hérite de `saturn.module.Module`. Elle est importée seulement à l'activation : `start()` / `stop()` pour les ressources, `on_setting_changed()`, et des méthodes marquées `@action()` appelables par D-Bus.
+
+Le contexte `self.ctx` donne les réglages, l'environnement détecté (`ctx.env`), une base SQLite paresseuse (`ctx.database()`) et `ctx.emit()` pour pousser des évènements. `saturn/modules/clean_url/` sert d'exemple.
+
+## Tests
+
 ```bash
-pip install -e .
-kitsune
+python3 -m pytest
 ```
 
----
+Les tests D-Bus lancent un vrai `saturnd` sur un bus privé (`dbus-daemon` requis) et n'écrivent jamais dans votre `~/.config`. Les tests de l'interface tournent hors écran (`QT_QPA_PLATFORM=offscreen`).
 
-## 🧩 Comment ajouter un nouveau module
+## Licence
 
-Tous les modules résident dans `kitsune/modules/<nom_du_module>/` et héritent de `BaseModule`.
-
-Exemple d'un module minimal :
-
-```python
-# kitsune/modules/mon_outil/module.py
-from kitsune.core.module import BaseModule
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMenu
-
-class MonOutilModule(BaseModule):
-    @property
-    def id(self) -> str:
-        return "mon_outil"
-
-    @property
-    def name(self) -> str:
-        return "Mon Outil"
-
-    @property
-    def description(self) -> str:
-        return "Description de mon outil utile."
-
-    @property
-    def category(self) -> str:
-        return "system"  # 'energy', 'clipboard', 'audio', 'system'
-
-    def on_enable(self) -> None:
-        # Initialiser les ressources (timers, hooks, processus...)
-        pass
-
-    def on_disable(self) -> None:
-        # Libérer impérativement toutes les ressources
-        pass
-
-    def get_tray_actions(self, parent_menu: QMenu) -> list:
-        # Retourne les actions affichées dans le menu tray
-        action = QAction("Action de Mon Outil", parent_menu)
-        action.triggered.connect(self._do_something)
-        return [action]
-
-    def _do_something(self):
-        self.app.env.send_notification("Mon Outil", "Action exécutée avec succès !")
-```
-
-Le `ModuleManager` découvre et charge automatiquement le nouveau module au démarrage de l'application !
-
----
-
-## 🧪 Tests Unitaires
-
-Lancer la suite de tests automatisés :
-```bash
-python3 -m unittest discover tests
-```
-
----
-
-## 🔒 Confidentialité & Local-First
-
-- **Zéro télémétrie** : Aucune requête réseau sortante vers des serveurs externes.
-- **Données 100% locales** : Tout l'historique et les notes restent confinés dans votre répertoire utilisateur (`~/.config/kitsune` et `~/.local/share/kitsune`).
-- **Filtrage des données sensibles** : L'historique du presse-papiers ignore automatiquement les motifs de clés privées SSH, tokens GitHub/GitLab et JWT.
-
----
-
-## 📄 Licence
-Licence MIT - Libre d'utilisation, de modification et de distribution.
+GPL-3.0-or-later.

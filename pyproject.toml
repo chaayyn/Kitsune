@@ -1,21 +1,41 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kitsune-linux"
+name = "saturn"
 version = "0.1.0"
-description = "Modular, local-first system tray utility for modern Linux (Wayland & X11)"
+description = "Boîte à outils modulaire et local-first pour les bureaux Linux"
 readme = "README.md"
-authors = [{ name = "chaayyn" }]
-license = { text = "MIT" }
-requires-python = ">=3.9"
-dependencies = [
-    "PyQt6>=6.4.0",
-]
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+# Viennent des paquets système (Debian/Kali) : PyGObject (`python3-gi`) pour le démon,
+# PySide6 + modules QML (`python3-pyside6.qtquick`, `qml6-module-qtquick-*`) pour l'interface.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
 
 [project.scripts]
-kitsune = "kitsune.main:main"
+saturnd = "saturn.daemon:main"
+
+[project.gui-scripts]
+saturn = "saturn.ui.app:main"
 
 [tool.setuptools.packages.find]
-include = ["kitsune*"]
+include = ["saturn*"]
+
+[tool.setuptools.package-data]
+"saturn.ui" = ["qml/*.qml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    # Avertissements internes de PyGObject (gi.events) sous Python 3.14.
+    "ignore::DeprecationWarning:gi.events",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
